@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { chunkMarkdown, slugifyHeading } from '../../src/text/chunk.js';
+import { chunkMarkdown, packText, slugifyHeading } from '../../src/text/chunk.js';
 
 test('slugifyHeading matches GitHub anchors', () => {
   assert.equal(slugifyHeading('Available Widgets'), 'available-widgets');
@@ -33,4 +33,20 @@ test('packs paragraphs up to maxChars and merges tiny trailing chunks', () => {
 
 test('returns no chunk for an empty document', () => {
   assert.deepEqual(chunkMarkdown('\n\n'), []);
+});
+
+test('packText splits an oversized table on line boundaries so no piece exceeds maxChars', () => {
+  const row = '| sensor.some_long_name | Reports the state of something | every 15 minutes | yes |';
+  const table = Array.from({ length: 60 }, () => row).join('\n');
+  const pieces = packText(table, { maxChars: 1000 });
+  assert.ok(pieces.length > 1);
+  assert.ok(pieces.every((p) => p.length <= 1000), 'a piece exceeds maxChars');
+  assert.equal(pieces.join('\n').split('\n').length, 60, 'no row lost or duplicated');
+});
+
+test('chunkMarkdown never emits a chunk above maxChars', () => {
+  const row = '| a | b | c |';
+  const md = `## Table\n\n${Array.from({ length: 400 }, () => row).join('\n')}\n`;
+  const chunks = chunkMarkdown(md, { maxChars: 500 });
+  assert.ok(chunks.every((c) => c.text.length <= 500));
 });

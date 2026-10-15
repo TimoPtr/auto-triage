@@ -1,11 +1,14 @@
 // @ts-check
 import { cleanIssueText } from '../../text/clean.js';
+import { packText } from '../../text/chunk.js';
 
 /** @typedef {import('../types.js').IndexItem} IndexItem */
 /** @typedef {import('../types.js').IndexChunk} IndexChunk */
 
 const MAINTAINER_ASSOCIATIONS = new Set(['OWNER', 'MEMBER', 'COLLABORATOR']);
 const DAY_MS = 24 * 60 * 60 * 1000;
+/** Upper bound of a chunk's text, under the embedding model window so nothing is silently truncated. */
+const CHUNK_CHARS = 2000;
 /** A body line that imitates the author prefix the reader adds; neutralized so it cannot claim a role. */
 const SPOOFED_PREFIX = /^(\s*)Comment by (a maintainer|the reporter|a user):/gim;
 
@@ -21,17 +24,23 @@ function authorLabel(association, login, reporterLogin) {
 }
 
 /**
+ * Chunks of one comment, each carrying the author prefix; logs ride on the first one.
  * @param {any} comment
- * @param {number} seq
+ * @param {number} firstSeq
  * @param {string} reporterLogin
- * @returns {IndexChunk | null}
+ * @returns {IndexChunk[]}
  */
-function commentChunk(comment, seq, reporterLogin) {
+function commentChunks(comment, firstSeq, reporterLogin) {
   const { text, logs } = cleanIssueText(comment.body ?? '');
-  if (!text && !logs) return null;
+  if (!text && !logs) return [];
   const who = authorLabel(comment.author_association, comment.user?.login, reporterLogin);
+  const prefix = `Comment by ${who}:\n`;
   const body = text.replace(SPOOFED_PREFIX, '$1Comment by (claimed) $2:');
-  return { seq, kind: 'comment', text: `Comment by ${who}:\n${body}`.trim(), logs, createdAt: comment.created_at };
+  const pieces = packText(body, { maxChars: CHUNK_CHARS - prefix.length });
+  if (pieces.length === 0) pieces.push('');
+  return pieces.map((piece, i) => ({
+    seq: firstSeq + i, kind: /** @type {const} */ ('comment'), text: `${prefix}${piece}`.trim(), logs: i === 0 ? logs : null, createdAt: comment.created_at,
+  }));
 }
 
 /**
@@ -43,9 +52,15 @@ function commentChunk(comment, seq, reporterLogin) {
 export async function* readIssues({ client, repo, options, now = new Date() }) {
   const cutoff = new Date(now.getTime() - options.closedWithinDays * DAY_MS);
   const wanted = new Set(options.states);
-  const params = { state: 'all', since: cutoff.toISOString(), per_page: 100, sort: 'updated', direction: 'asc' };
+  const listing = { per_page: 100, sort: 'updated', direction: 'asc' };
+  // Open issues have no window: a long-standing bug nobody touched is still a duplicate target.
+  // `since` filters on updated_at, so it is only applied to the closed listing.
+  const listings = [
+    ...(wanted.has('open') ? [{ state: 'open', ...listing }] : []),
+    ...(wanted.has('closed') ? [{ state: 'closed', since: cutoff.toISOString(), ...listing }] : []),
+  ];
 
-  for await (const issue of client.paginate(`/repos/${repo}/issues`, params)) {
+  for (const params of listings) for await (const issue of client.paginate(`/repos/${repo}/issues`, params)) {
     if (issue.pull_request) continue;
     if (!wanted.has(issue.state)) continue;
     if (issue.state === 'closed' && issue.closed_at && new Date(issue.closed_at) < cutoff) continue;
@@ -53,13 +68,14 @@ export async function* readIssues({ client, repo, options, now = new Date() }) {
     const { text, logs } = cleanIssueText(issue.body ?? '');
     const reporter = issue.user?.login ?? '';
     const chunks = /** @type {IndexChunk[]} */ ([]);
-    const bodyText = [issue.title, text].filter(Boolean).join('\n\n');
-    chunks.push({ seq: 0, kind: 'body', text: bodyText, logs, createdAt: issue.created_at });
+    const bodyText = [issue.title, text.replace(SPOOFED_PREFIX, '$1Comment by (claimed) $2:')].filter(Boolean).join('\n\n');
+    for (const piece of packText(bodyText, { maxChars: CHUNK_CHARS })) {
+      chunks.push({ seq: chunks.length, kind: 'body', text: piece, logs: chunks.length === 0 ? logs : null, createdAt: issue.created_at });
+    }
 
     if (options.comments && issue.comments > 0) {
       for await (const comment of client.paginate(`/repos/${repo}/issues/${issue.number}/comments`, { per_page: 100 })) {
-        const chunk = commentChunk(comment, chunks.length, reporter);
-        if (chunk) chunks.push(chunk);
+        chunks.push(...commentChunks(comment, chunks.length, reporter));
       }
     }
 

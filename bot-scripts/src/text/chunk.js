@@ -60,25 +60,79 @@ function paragraphs(lines) {
 }
 
 /**
- * Packs paragraphs into pieces of at most maxChars, splitting an oversized paragraph on sentences.
+ * Splits one oversized line into slices of at most maxChars.
+ * @param {string} line
+ * @param {number} maxChars
+ */
+function hardSlice(line, maxChars) {
+  const slices = [];
+  for (let start = 0; start < line.length; start += maxChars) slices.push(line.slice(start, start + maxChars));
+  return slices;
+}
+
+/**
+ * Groups the lines of a paragraph into units of at most maxChars, keeping the
+ * original line breaks. Tables and lists have no sentence boundaries, so this
+ * is the fallback that keeps them whole per row.
+ * @param {string} paragraph
+ * @param {number} maxChars
+ */
+function lineGroups(paragraph, maxChars) {
+  const groups = /** @type {string[]} */ ([]);
+  let current = '';
+  for (const line of paragraph.split('\n')) {
+    for (const piece of hardSlice(line, maxChars)) {
+      if (current && current.length + piece.length + 1 > maxChars) {
+        groups.push(current);
+        current = '';
+      }
+      current = current ? `${current}\n${piece}` : piece;
+    }
+  }
+  if (current) groups.push(current);
+  return groups;
+}
+
+/**
+ * Splits a paragraph that exceeds maxChars: on sentences when every sentence fits, else on lines.
+ * @param {string} paragraph
+ * @param {number} maxChars
+ */
+function splitOversized(paragraph, maxChars) {
+  if (paragraph.length <= maxChars) return [paragraph];
+  const sentences = paragraph.split(/(?<=[.!?])\s+/);
+  if (sentences.length > 1 && sentences.every((s) => s.length <= maxChars)) return sentences;
+  return lineGroups(paragraph, maxChars);
+}
+
+/**
+ * Packs paragraphs into pieces of at most maxChars.
  * @param {string[]} paras
  * @param {number} maxChars
  */
 function pack(paras, maxChars) {
   const pieces = /** @type {string[]} */ ([]);
   let current = '';
-  for (const para of paras) {
-    const units = para.length > maxChars ? para.split(/(?<=[.!?])\s+/) : [para];
-    for (const unit of units) {
-      if (current && current.length + unit.length + 2 > maxChars) {
-        pieces.push(current);
-        current = '';
-      }
-      current = current ? `${current}\n\n${unit}` : unit;
+  for (const unit of paras.flatMap((para) => splitOversized(para, maxChars))) {
+    if (current && current.length + unit.length + 2 > maxChars) {
+      pieces.push(current);
+      current = '';
     }
+    current = current ? `${current}\n\n${unit}` : unit;
   }
   if (current) pieces.push(current);
   return pieces;
+}
+
+/**
+ * Pieces of at most maxChars from free text with no headings, such as an issue
+ * body or a comment. Fenced blocks stay whole unless they alone exceed the cap.
+ * @param {string} text
+ * @param {{ maxChars?: number }} [options]
+ * @returns {string[]}
+ */
+export function packText(text, { maxChars = 2000 } = {}) {
+  return pack(paragraphs(text.replace(/\r\n/g, '\n').split('\n')), maxChars);
 }
 
 /**
