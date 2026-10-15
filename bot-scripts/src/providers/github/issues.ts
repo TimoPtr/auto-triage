@@ -69,21 +69,21 @@ export interface ReadIssuesInput {
  * chunks per comment, and the outcome fields the renderer shows.
  */
 export async function* readIssues({ client, repo, options, now = new Date() }: ReadIssuesInput): AsyncGenerator<IndexItem> {
-  const cutoff = new Date(now.getTime() - options.closedWithinDays * DAY_MS);
+  const cutoff = options.closedWithinDays === undefined ? null : new Date(now.getTime() - options.closedWithinDays * DAY_MS);
   const wanted = new Set(options.states);
   const listing = { per_page: 100, sort: 'updated', direction: 'asc' };
   // Open issues have no window: a long-standing bug nobody touched is still a duplicate target.
-  // `since` filters on updated_at, so it is only applied to the closed listing.
+  // `since` filters on updated_at, so it is only applied to the closed listing, and only when a window is set.
   const listings = [
     ...(wanted.has('open') ? [{ state: 'open', ...listing }] : []),
-    ...(wanted.has('closed') ? [{ state: 'closed', since: cutoff.toISOString(), ...listing }] : []),
+    ...(wanted.has('closed') ? [{ state: 'closed', ...(cutoff ? { since: cutoff.toISOString() } : {}), ...listing }] : []),
   ];
 
   for (const params of listings) for await (const raw of client.paginate(`/repos/${repo}/issues`, params)) {
     const issue = raw as ApiIssue;
     if (issue.pull_request) continue;
     if (!wanted.has(issue.state)) continue;
-    if (issue.state === 'closed' && issue.closed_at && new Date(issue.closed_at) < cutoff) continue;
+    if (cutoff && issue.state === 'closed' && issue.closed_at && new Date(issue.closed_at) < cutoff) continue;
 
     const { text, logs } = cleanIssueText(issue.body ?? '');
     const reporter = issue.user?.login ?? '';

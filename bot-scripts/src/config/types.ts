@@ -2,7 +2,8 @@ export type Audience = 'user' | 'developer' | 'maintainer';
 
 export interface IssuesConfig {
   states: ('open' | 'closed')[];
-  closedWithinDays: number;
+  /** Window for closed issues in days; absent means every closed issue. */
+  closedWithinDays?: number;
   comments: boolean;
 }
 

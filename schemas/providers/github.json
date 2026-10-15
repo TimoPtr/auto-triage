@@ -14,7 +14,7 @@
         "additionalProperties": false,
         "properties": {
           "states": { "type": "array", "items": { "enum": ["open", "closed"] }, "default": ["open", "closed"], "minItems": 1 },
-          "closedWithinDays": { "type": "integer", "minimum": 1, "default": 730 },
+          "closedWithinDays": { "type": "integer", "minimum": 1, "description": "Only index issues closed within this many days. Omit to index every closed issue." },
           "comments": { "type": "boolean", "default": true }
         }
       },

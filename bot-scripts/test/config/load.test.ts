@@ -38,3 +38,10 @@ test('rejects a repository key that is not owner/name', () => {
   config.providers.github['not a repo'] = { issues: {} as never };
   assert.throws(() => validateConfig(config), ConfigError);
 });
+
+test('closedWithinDays is optional and has no default', () => {
+  const config = loadConfig(fixture);
+  delete config.providers.github['home-assistant/android'].issues.closedWithinDays;
+  const validated = validateConfig(config);
+  assert.equal(validated.providers.github['home-assistant/android'].issues.closedWithinDays, undefined);
+});

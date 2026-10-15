@@ -108,3 +108,11 @@ test('splits a long body and a long comment into several chunks none above the c
   assert.deepEqual(issue.chunks.map((c) => c.seq), issue.chunks.map((_, i) => i));
   assert.ok(comments.every((c) => c.authorRole === 'maintainer'));
 });
+
+test('without closedWithinDays every closed issue is listed and kept', async () => {
+  const log = [];
+  const items = await collect(readIssues({ client: fakeClient(log), repo: 'o/r', options: { states: ['open', 'closed'], comments: false }, now }));
+  const closedListing = log.find((c) => c.params?.state === 'closed');
+  assert.equal(closedListing.params.since, undefined);
+  assert.ok(items.some((i) => i.sourceId === '7'), 'the 2022 closed issue is indexed');
+});
