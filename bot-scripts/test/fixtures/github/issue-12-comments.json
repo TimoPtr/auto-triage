@@ -1,0 +1,18 @@
+[
+  {
+    "id": 501,
+    "user": { "login": "maintainer" },
+    "author_association": "MEMBER",
+    "created_at": "2025-03-02T10:00:00Z",
+    "reactions": { "+1": 2, "-1": 0 },
+    "body": "Fixed in #40, widgets now re-register on BOOT_COMPLETED."
+  },
+  {
+    "id": 502,
+    "user": { "login": "reporter" },
+    "author_association": "NONE",
+    "created_at": "2025-03-05T09:00:00Z",
+    "reactions": { "+1": 0, "-1": 0 },
+    "body": "Confirmed, thanks!"
+  }
+]
