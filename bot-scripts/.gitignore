@@ -1,0 +1,4 @@
+node_modules/
+knowledge*.sqlite
+knowledge*.sqlite.tmp
+.model-cache/

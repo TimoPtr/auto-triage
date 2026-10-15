@@ -1,0 +1,18 @@
+{
+  "name": "@home-assistant/auto-triage-scripts",
+  "private": true,
+  "type": "module",
+  "description": "Knowledge index builder and retrieval for the Home Assistant triage bot. Installed with npm ci --ignore-scripts by the composite actions.",
+  "engines": { "node": ">=24" },
+  "scripts": {
+    "test": "node --test",
+    "build-index": "node src/cli/build.js",
+    "query": "node src/cli/query.js"
+  },
+  "dependencies": {
+    "@huggingface/transformers": "^4.2.0",
+    "ajv": "^8.17.1",
+    "sqlite-vec": "0.1.9",
+    "yaml": "^2.8.0"
+  }
+}
