@@ -22,7 +22,7 @@ const embedder = { modelKey: 'fake@1@q8@cls', dimensions: 4, async embed(texts) 
 const item = (sourceId, source, title, text, createdAt, extra = {}) => ({
   source, provider: 'github', origin: 'o/r', sourceId, url: `https://x/${source}/${sourceId}`, title, audience: 'user',
   createdAt, updatedAt: null, outcome: source === 'issue' ? { state: 'closed' } : null, extra: null,
-  chunks: [{ seq: 0, kind: source === 'docs' ? 'section' : 'body', heading: extra.heading ?? null, anchor: null, text, logs: extra.logs ?? null, createdAt }],
+  chunks: [{ seq: 0, kind: source === 'docs' ? 'section' : 'body', heading: extra.heading ?? null, anchor: null, text, logs: extra.logs ?? null, createdAt, authorRole: source === 'issue' ? 'reporter' : null }],
 });
 
 const indexPath = join(tmp, 'knowledge.sqlite');
@@ -48,6 +48,8 @@ test('ranks dense and lexical matches and reports scores', async () => {
   assert.ok(results.bestSimilarity > 0.9);
   const widget = results.find((r) => r.sourceId === '1');
   assert.deepEqual(widget.outcome, { state: 'closed' });
+  assert.equal(widget.authorRole, 'reporter');
+  assert.equal(results.find((r) => r.source === 'docs').authorRole, null);
 });
 
 test('finds an error string through the logs column', async () => {

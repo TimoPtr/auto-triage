@@ -9,7 +9,7 @@ const DATED_SOURCES = new Set(['issue', 'pull', 'discussion', 'forum']);
 const DAY_MS = 24 * 60 * 60 * 1000;
 
 /**
- * @typedef {{ itemId: number, chunkId: number, source: string, provider: string, origin: string, sourceId: string, url: string, title: string, heading: string|null, anchor: string|null, text: string, createdAt: string, audience: string, outcome: object|null, scores: { similarity: number|null, lexical: number|null, fused: number }, rank: number }} RetrievalResult
+ * @typedef {{ itemId: number, chunkId: number, source: string, provider: string, origin: string, sourceId: string, url: string, title: string, heading: string|null, anchor: string|null, text: string, createdAt: string, audience: string, authorRole: string|null, outcome: object|null, scores: { similarity: number|null, lexical: number|null, fused: number }, rank: number }} RetrievalResult
  */
 
 /**
@@ -66,7 +66,7 @@ export async function retrieve(db, embedder, question, options = {}) {
 
   const ids = Array.from(fused.keys());
   const rows = /** @type {any[]} */ (db.prepare(
-    `SELECT c.id AS chunk_id, c.item_id, c.heading, c.anchor, c.text, c.created_at,
+    `SELECT c.id AS chunk_id, c.item_id, c.heading, c.anchor, c.text, c.created_at, c.author_role,
             i.source, i.provider, i.origin, i.source_id, i.url, i.title, i.audience, i.outcome
      FROM chunks c JOIN items i ON i.id = c.item_id WHERE c.id IN (${ids.map(() => '?').join(',')})`,
   ).all(...ids));
@@ -81,7 +81,7 @@ export async function retrieve(db, embedder, question, options = {}) {
       best.set(row.item_id, {
         itemId: row.item_id, chunkId: row.chunk_id, source: row.source, provider: row.provider, origin: row.origin,
         sourceId: row.source_id, url: row.url, title: row.title, heading: row.heading, anchor: row.anchor, text: row.text,
-        createdAt: row.created_at, audience: row.audience, outcome: row.outcome ? JSON.parse(row.outcome) : null,
+        createdAt: row.created_at, audience: row.audience, authorRole: row.author_role ?? null, outcome: row.outcome ? JSON.parse(row.outcome) : null,
         scores: { similarity: similarity.get(row.chunk_id) ?? null, lexical: lexical.get(row.chunk_id) ?? null, fused: score },
         rank: 0,
       });

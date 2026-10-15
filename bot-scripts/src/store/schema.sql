@@ -26,6 +26,7 @@ CREATE TABLE chunks (
   anchor      TEXT,
   text        TEXT NOT NULL,
   logs        TEXT,
+  author_role TEXT,            -- reporter | maintainer | user; null for docs and code. The only source of author authority.
   created_at  TEXT NOT NULL,
   hash        TEXT NOT NULL
 );

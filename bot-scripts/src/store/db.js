@@ -4,7 +4,7 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import * as sqliteVec from 'sqlite-vec';
 
-export const SCHEMA_VERSION = 1;
+export const SCHEMA_VERSION = 2;
 export const FORMAT_VERSION = 1;
 
 const SCHEMA_PATH = fileURLToPath(new URL('./schema.sql', import.meta.url));

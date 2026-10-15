@@ -52,8 +52,8 @@ function statements(db) {
   return {
     item: db.prepare(`INSERT INTO items (source, provider, origin, source_id, url, title, audience, created_at, updated_at, outcome, extra)
                       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`),
-    chunk: db.prepare(`INSERT INTO chunks (item_id, seq, kind, heading, anchor, text, logs, created_at, hash)
-                       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`),
+    chunk: db.prepare(`INSERT INTO chunks (item_id, seq, kind, heading, anchor, text, logs, author_role, created_at, hash)
+                       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`),
     vector: db.prepare('INSERT INTO vec_chunks (chunk_id, embedding) VALUES (?, vec_int8(?))'),
     meta: db.prepare('INSERT OR REPLACE INTO meta (key, value) VALUES (?, ?)'),
   };
@@ -98,7 +98,7 @@ export async function writeIndex({ items, embedder, outPath, previousPath, meta 
         if (!chunk.text.trim()) continue;
         const hash = chunkHash(chunk);
         const chunkId = BigInt(stmt.chunk.run(itemId, chunk.seq, chunk.kind, chunk.heading ?? null, chunk.anchor ?? null,
-          chunk.text, chunk.logs ?? null, chunk.createdAt, hash).lastInsertRowid);
+          chunk.text, chunk.logs ?? null, chunk.authorRole ?? null, chunk.createdAt, hash).lastInsertRowid);
         stats.chunks += 1;
         const known = previous.get(hash);
         if (known) {

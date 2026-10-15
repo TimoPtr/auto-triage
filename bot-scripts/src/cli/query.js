@@ -18,7 +18,8 @@ export function formatResults(results, { json }) {
   const lines = [`best similarity ${results.bestSimilarity.toFixed(2)}`, ''];
   for (const r of results) {
     const date = r.createdAt.slice(0, 10);
-    const meta = [r.outcome?.state, r.outcome?.stateReason, date === DOCS_EPOCH_DATE ? null : date].filter(Boolean).join(', ');
+    const role = r.authorRole && r.authorRole !== 'reporter' ? `comment by ${r.authorRole}` : null;
+    const meta = [r.outcome?.state, r.outcome?.stateReason, date === DOCS_EPOCH_DATE ? null : date, role].filter(Boolean).join(', ');
     const title = r.heading ? `${r.title} › ${r.heading}` : r.title;
     lines.push(`${r.rank}. [${r.source}] ${title}${meta ? ` (${meta})` : ''}`);
     lines.push(`   ${r.url}`);

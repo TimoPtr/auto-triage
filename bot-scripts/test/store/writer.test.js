@@ -47,6 +47,17 @@ test('writes items, chunks, vectors, fts and meta atomically', async () => {
   db.close();
 });
 
+test('stores the author role of a chunk', async () => {
+  const out = join(tmp, 'role.sqlite');
+  const withRole = item('9', 'body text', [{ seq: 1, kind: 'comment', text: 'reply', logs: null, createdAt: '2025-01-02T00:00:00Z', authorRole: 'maintainer' }]);
+  withRole.chunks[0].authorRole = 'reporter';
+  await writeIndex({ items: of(withRole), embedder: fakeEmbedder(), outPath: out, meta: {} });
+  const db = openDatabase(out, { readOnly: true });
+  const roles = db.prepare('SELECT author_role FROM chunks ORDER BY seq').all().map((r) => r.author_role);
+  db.close();
+  assert.deepEqual(roles, ['reporter', 'maintainer']);
+});
+
 test('reuses vectors for unchanged chunks from the previous index', async () => {
   const previous = join(tmp, 'prev.sqlite');
   await writeIndex({ items: of(item('1', 'widget stops')), embedder: fakeEmbedder(), outPath: previous, meta: {} });
