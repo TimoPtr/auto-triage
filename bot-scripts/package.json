@@ -2,17 +2,24 @@
   "name": "@home-assistant/auto-triage-scripts",
   "private": true,
   "type": "module",
-  "description": "Knowledge index builder and retrieval for the Home Assistant triage bot. Installed with npm ci --ignore-scripts by the composite actions.",
-  "engines": { "node": ">=24" },
+  "description": "Knowledge index builder and retrieval for the Home Assistant triage bot. TypeScript run natively by Node 24 (type stripping); installed with npm ci --ignore-scripts --omit=dev by the composite actions.",
+  "engines": {
+    "node": ">=24"
+  },
   "scripts": {
-    "test": "node --test",
-    "build-index": "node src/cli/build.js",
-    "query": "node src/cli/query.js"
+    "typecheck": "tsc -p tsconfig.json && tsc -p tsconfig.test.json",
+    "test": "npm run typecheck && node --test",
+    "build-index": "node src/cli/build.ts",
+    "query": "node src/cli/query.ts"
   },
   "dependencies": {
     "@huggingface/transformers": "^4.2.0",
     "ajv": "^8.17.1",
     "sqlite-vec": "0.1.9",
     "yaml": "^2.8.0"
+  },
+  "devDependencies": {
+    "@types/node": "^24.19.2",
+    "typescript": "^5.9.3"
   }
 }

@@ -7,7 +7,10 @@ callers. Design: the knowledge bot spec in `home-assistant/android`,
 
 ## Layout
 
-- `bot-scripts/` Node 24 scripts: providers, index writer, retrieval, CLIs. `npm ci --ignore-scripts`.
+- `bot-scripts/` TypeScript run natively by Node 24 (type stripping, no build step): providers, index
+  writer, retrieval, CLIs. `npm ci --ignore-scripts --omit=dev` installs the runtime; `tsc --noEmit` is a
+  dev-only check. Imports keep the `.ts` extension, and no syntax that needs transformation (enums,
+  parameter properties, decorators) is used.
 - `schemas/` JSON Schema for the config and the index metadata.
 - `docs/superpowers/plans/` implementation plans, one per phase.
 
@@ -15,7 +18,7 @@ callers. Design: the knowledge bot spec in `home-assistant/android`,
 
     cd bot-scripts
     npm ci --ignore-scripts
-    npm test
+    npm test          # tsc --noEmit on src (strict) and tests, then node --test
 
 ## Build and query an index locally
 
