@@ -52,7 +52,8 @@ if (import.meta.url === pathToFileURL(process.argv[1] ?? '').href) {
   const embedder = createEmbedder(config.embedding, { cacheDir: values['model-cache'] });
   const db = openDatabase(values.index, { readOnly: true });
   try {
-    const results = await retrieve(db, embedder, question, { k: Number(values.k), asOf: values['as-of'] });
+    const triage = /** @type {{ minSimilarity?: number } | undefined} */ (config.triage);
+    const results = await retrieve(db, embedder, question, { k: Number(values.k), asOf: values['as-of'], minSimilarity: triage?.minSimilarity });
     console.log(formatResults(results, { json: values.json }));
   } catch (error) {
     console.error(error instanceof Error ? error.message : String(error));

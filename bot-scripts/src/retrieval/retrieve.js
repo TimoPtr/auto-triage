@@ -33,7 +33,7 @@ function filters({ asOf, excludeItemId }) {
  * @returns {Promise<RetrievalResult[] & { bestSimilarity: number }>}
  */
 export async function retrieve(db, embedder, question, options = {}) {
-  const { k = 8, candidates = 50, minSimilarity = 0.3, sourceWeights = {}, decayAfterDays = 730, decayFactor = 0.7, liveLists = [], now = new Date() } = options;
+  const { k = 8, candidates = 50, minSimilarity = 0, sourceWeights = {}, decayAfterDays = 730, decayFactor = 0.7, liveLists = [], now = new Date() } = options;
   const meta = readMeta(db);
   if (meta.model_key !== embedder.modelKey) {
     throw new Error(`Index model ${meta.model_key} does not match configured ${embedder.modelKey}; rebuild the index`);
@@ -41,13 +41,13 @@ export async function retrieve(db, embedder, question, options = {}) {
   const { where, params } = filters(options);
 
   const [vector] = await embedder.embed([question]);
-  const dense = /** @type {{ chunk_id: number, distance: number }[]} */ (db.prepare(
+  const knn = /** @type {{ chunk_id: number, distance: number }[]} */ (db.prepare(
     `SELECT v.chunk_id, v.distance FROM vec_chunks v JOIN chunks c ON c.id = v.chunk_id
      WHERE v.embedding MATCH vec_int8(?) AND k = ? ${where} ORDER BY v.distance`,
-  ).all(toBlob(quantizeInt8(vector)), BigInt(candidates * 4), ...params))
-    // a candidate below the floor matches nothing meaningful; it must not reach the fusion
-    .filter((r) => cosineFromL2(r.distance) >= minSimilarity)
-    .slice(0, candidates);
+  ).all(toBlob(quantizeInt8(vector)), BigInt(candidates * 4), ...params));
+  // the gate reads the real best hit; the floor only decides what reaches the fusion
+  const bestSimilarity = knn.length ? cosineFromL2(knn[0].distance) : 0;
+  const dense = knn.filter((r) => cosineFromL2(r.distance) >= minSimilarity).slice(0, candidates);
   const similarity = new Map(dense.map((r) => [Number(r.chunk_id), cosineFromL2(r.distance)]));
 
   const ftsQuery = toFtsQuery(question);
@@ -62,7 +62,7 @@ export async function retrieve(db, embedder, question, options = {}) {
     { weight: 1, ids: lexicalRows.map((r) => r.id) },
     ...liveLists,
   ]);
-  if (fused.size === 0) return Object.assign([], { bestSimilarity: 0 });
+  if (fused.size === 0) return Object.assign([], { bestSimilarity });
 
   const ids = Array.from(fused.keys());
   const rows = /** @type {any[]} */ (db.prepare(
@@ -89,6 +89,5 @@ export async function retrieve(db, embedder, question, options = {}) {
   }
   const results = Array.from(best.values()).sort((a, b) => b.scores.fused - a.scores.fused).slice(0, k)
     .map((r, i) => ({ ...r, rank: i + 1 }));
-  const bestSimilarity = dense.length ? cosineFromL2(dense[0].distance) : 0;
   return Object.assign(results, { bestSimilarity });
 }

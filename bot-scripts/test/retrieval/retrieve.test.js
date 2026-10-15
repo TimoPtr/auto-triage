@@ -39,7 +39,7 @@ test.before(async () => {
 
 test('ranks dense and lexical matches and reports scores', async () => {
   const db = openDatabase(indexPath, { readOnly: true });
-  const results = await retrieve(db, embedder, 'widget stops updating', { k: 5, now: new Date('2026-10-15T00:00:00Z') });
+  const results = await retrieve(db, embedder, 'widget stops updating', { k: 5, minSimilarity: 0.3, now: new Date('2026-10-15T00:00:00Z') });
   db.close();
   assert.ok(results.length >= 3);
   assert.ok(results.every((r) => r.source !== 'issue' || r.sourceId !== '2'));
@@ -52,7 +52,7 @@ test('ranks dense and lexical matches and reports scores', async () => {
 
 test('finds an error string through the logs column', async () => {
   const db = openDatabase(indexPath, { readOnly: true });
-  const results = await retrieve(db, embedder, 'E/EntityWidget', { k: 3 });
+  const results = await retrieve(db, embedder, 'E/EntityWidget', { k: 3, minSimilarity: 0.3 });
   db.close();
   assert.equal(results[0].sourceId, '1');
   assert.ok(results[0].scores.lexical !== null);
@@ -91,4 +91,19 @@ test('source weights change the order', async () => {
   db.close();
   assert.notEqual(plain[0].sourceId, docsFirst[0].sourceId);
   assert.equal(docsFirst[0].source, 'docs');
+});
+
+test('bestSimilarity reports the real best hit even when the floor filters every dense candidate', async () => {
+  const db = openDatabase(indexPath, { readOnly: true });
+  const results = await retrieve(db, embedder, 'widget', { k: 10, minSimilarity: 1.1 });
+  db.close();
+  assert.ok(results.bestSimilarity > 0.9);
+  assert.ok(results.every((r) => r.scores.similarity === null), 'dense side contributed nothing');
+});
+
+test('the floor is off by default', async () => {
+  const db = openDatabase(indexPath, { readOnly: true });
+  const results = await retrieve(db, embedder, 'widget stops updating', { k: 10 });
+  db.close();
+  assert.ok(results.some((r) => r.sourceId === '2'), 'an orthogonal item is still a candidate without a floor');
 });
