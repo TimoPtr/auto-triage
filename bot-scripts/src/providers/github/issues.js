@@ -6,6 +6,8 @@ import { cleanIssueText } from '../../text/clean.js';
 
 const MAINTAINER_ASSOCIATIONS = new Set(['OWNER', 'MEMBER', 'COLLABORATOR']);
 const DAY_MS = 24 * 60 * 60 * 1000;
+/** A body line that imitates the author prefix the reader adds; neutralized so it cannot claim a role. */
+const SPOOFED_PREFIX = /^(\s*)Comment by (a maintainer|the reporter|a user):/gim;
 
 /**
  * @param {string} association
@@ -28,7 +30,8 @@ function commentChunk(comment, seq, reporterLogin) {
   const { text, logs } = cleanIssueText(comment.body ?? '');
   if (!text && !logs) return null;
   const who = authorLabel(comment.author_association, comment.user?.login, reporterLogin);
-  return { seq, kind: 'comment', text: `Comment by ${who}:\n${text}`.trim(), logs, createdAt: comment.created_at };
+  const body = text.replace(SPOOFED_PREFIX, '$1Comment by (claimed) $2:');
+  return { seq, kind: 'comment', text: `Comment by ${who}:\n${body}`.trim(), logs, createdAt: comment.created_at };
 }
 
 /**
