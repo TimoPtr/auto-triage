@@ -34,3 +34,11 @@ test('returns empty text and null logs for a template-only body', () => {
   assert.equal(text, '');
   assert.equal(logs, null);
 });
+
+test('a huge single-token block does not stall the log detector', () => {
+  const blob = 'A'.repeat(200_000);
+  const started = performance.now();
+  const { logs } = cleanIssueText('```\n' + blob + '\n```');
+  assert.ok(performance.now() - started < 500, 'took too long');
+  assert.equal(logs, null);
+});
