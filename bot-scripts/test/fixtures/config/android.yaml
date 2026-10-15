@@ -1,0 +1,30 @@
+---
+version: 1
+
+product:
+  name: Home Assistant Companion for Android
+  slug: android
+
+providers:
+  github:
+    home-assistant/android:
+      issues:
+        states: [open, closed]
+        closedWithinDays: 730
+        comments: true
+    home-assistant/companion.home-assistant:
+      docs:
+        path: docs
+        baseUrl: https://companion.home-assistant.io/docs/
+    home-assistant/contributors.home-assistant.io:
+      docs:
+        path: src/content/docs/companion
+        baseUrl: https://contributors.home-assistant.io/companion/
+        audience: developer
+
+embedding:
+  model: Xenova/bge-small-en-v1.5
+  revision: main
+  dtype: q8
+  dimensions: 384
+  pooling: cls

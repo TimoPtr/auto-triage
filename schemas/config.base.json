@@ -1,0 +1,70 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://home-assistant.io/auto-triage/config.base.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["version", "product", "providers", "embedding"],
+  "properties": {
+    "version": { "type": "integer", "const": 1 },
+    "product": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "slug"],
+      "properties": {
+        "name": { "type": "string", "minLength": 1 },
+        "slug": { "type": "string", "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$" }
+      }
+    },
+    "providers": {
+      "type": "object",
+      "additionalProperties": false,
+      "minProperties": 1,
+      "properties": {}
+    },
+    "embedding": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["model", "revision", "dtype", "dimensions"],
+      "properties": {
+        "model": { "type": "string", "minLength": 1 },
+        "revision": { "type": "string", "minLength": 1 },
+        "dtype": { "enum": ["fp32", "fp16", "q8"] },
+        "dimensions": { "type": "integer", "minimum": 16 },
+        "pooling": { "enum": ["cls", "mean"], "default": "cls" }
+      }
+    },
+    "peers": {
+      "type": "array",
+      "default": [],
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["product", "repository"],
+        "properties": {
+          "product": { "type": "string" },
+          "repository": { "type": "string", "pattern": "^[^/\\s]+/[^/\\s]+$" },
+          "weight": { "type": "number", "exclusiveMinimum": 0, "maximum": 1, "default": 0.5 },
+          "sources": { "type": "array", "items": { "type": "string" } }
+        }
+      }
+    },
+    "triage": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "minSimilarity": { "type": "number", "minimum": 0, "maximum": 1, "default": 0.35 },
+        "confidence": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "answer": { "type": "integer", "minimum": 0, "maximum": 100, "default": 75 },
+            "links": { "type": "integer", "minimum": 0, "maximum": 100, "default": 45 }
+          }
+        },
+        "recheckLabel": { "type": "string", "default": "ai-recheck" },
+        "nextSteps": { "type": "object", "additionalProperties": { "type": "string", "format": "uri" } }
+      }
+    },
+    "evalCases": { "type": "string" }
+  }
+}

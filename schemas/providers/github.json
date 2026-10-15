@@ -1,0 +1,33 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://home-assistant.io/auto-triage/providers/github.json",
+  "type": "object",
+  "minProperties": 1,
+  "propertyNames": { "pattern": "^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$" },
+  "additionalProperties": {
+    "type": "object",
+    "additionalProperties": false,
+    "minProperties": 1,
+    "properties": {
+      "issues": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "states": { "type": "array", "items": { "enum": ["open", "closed"] }, "default": ["open", "closed"], "minItems": 1 },
+          "closedWithinDays": { "type": "integer", "minimum": 1, "default": 730 },
+          "comments": { "type": "boolean", "default": true }
+        }
+      },
+      "docs": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["path", "baseUrl"],
+        "properties": {
+          "path": { "type": "string", "minLength": 1 },
+          "baseUrl": { "type": "string", "format": "uri" },
+          "audience": { "enum": ["user", "developer", "maintainer"], "default": "user" }
+        }
+      }
+    }
+  }
+}
