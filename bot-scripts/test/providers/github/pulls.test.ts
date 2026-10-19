@@ -38,10 +38,27 @@ test('yields a merged pull request with body, linked issues, files and the maint
   assert.equal(pr.chunks[0].kind, 'body');
   assert.ok(pr.chunks[0].text.startsWith('Re-register widgets after boot'));
   const reviews = pr.chunks.filter((c) => c.kind === 'review');
-  assert.equal(reviews.length, 1, 'only the thread with a maintainer reply');
-  assert.ok(reviews[0].text.startsWith('app/src/main/kotlin/Widget.kt:12\n'));
-  assert.ok(reviews[0].text.includes('WorkManager is delayed'));
-  assert.equal(reviews[0].authorRole, 'maintainer');
+  assert.equal(reviews.length, 2, 'only the thread with a maintainer reply, one chunk per comment');
+  assert.ok(reviews.every((c) => c.text.startsWith('app/src/main/kotlin/Widget.kt:12\n')));
+  assert.equal(reviews[0].authorRole, 'user', 'the question keeps its own role');
+  assert.ok(reviews[0].text.includes('Why not use WorkManager'));
+  assert.equal(reviews[1].authorRole, 'maintainer');
+  assert.ok(reviews[1].text.includes('WorkManager is delayed'));
+});
+
+test('a review comment on an absurdly long path still yields bounded chunks', async () => {
+  const longPath = 'a/'.repeat(1500) + 'File.kt';
+  const comments = [
+    { id: 1, in_reply_to_id: null, path: longPath, line: 1, user: { login: 'someone' }, author_association: 'NONE', created_at: '2025-03-02T11:00:00Z', body: 'q' },
+    { id: 2, in_reply_to_id: 1, path: longPath, line: 1, user: { login: 'm' }, author_association: 'MEMBER', created_at: '2025-03-02T12:00:00Z', body: 'a' },
+  ];
+  const client = { async *paginate(path) { if (path === '/repos/o/r/pulls') yield* page; else if (path.endsWith('/40/comments')) yield* comments; else yield* []; } };
+  const out = [];
+  for await (const i of readPulls({ client, repo: 'o/r', options, now })) out.push(i);
+  const pr = out.find((i) => i.sourceId === '40');
+  const reviews = pr.chunks.filter((c) => c.kind === 'review');
+  assert.equal(reviews.length, 2);
+  assert.ok(reviews.every((c) => c.text.length <= 2000));
 });
 
 test('skips bot pull requests by default', async () => {
@@ -90,7 +107,7 @@ test('reuses stored review comments and files when the pull request has not chan
   const items = await collect(options, log, raw);
   assert.ok(log.every((c) => !c.path.endsWith('/comments') && !c.path.endsWith('/files')));
   const pr = items.find((i) => i.sourceId === '40');
-  assert.equal(pr.chunks.filter((c) => c.kind === 'review').length, 1);
+  assert.equal(pr.chunks.filter((c) => c.kind === 'review').length, 2);
   assert.deepEqual(pr.outcome.files, ['app/src/main/kotlin/Widget.kt', 'CHANGELOG.md']);
   raw.close();
 });

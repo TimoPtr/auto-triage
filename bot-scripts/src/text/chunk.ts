@@ -114,6 +114,7 @@ function pack(paras: string[], maxChars: number): string[] {
  * body or a comment. Fenced blocks stay whole unless they alone exceed the cap.
  */
 export function packText(text: string, { maxChars = 2000 }: { maxChars?: number } = {}): string[] {
+  if (!(maxChars >= 1)) throw new Error(`packText: maxChars must be at least 1, got ${maxChars}`);
   return pack(paragraphs(text.replace(/\r\n/g, '\n').split('\n')), maxChars);
 }
 

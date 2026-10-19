@@ -9,6 +9,8 @@ const DAY_MS = 24 * 60 * 60 * 1000;
 const CHUNK_CHARS = 2000;
 /** Files listed per pull request; enough to tell what a change touched without indexing bulk renames. */
 const MAX_FILES = 50;
+/** Longest `path:line` head of a review chunk; a longer path keeps its tail, where the file name is. */
+const MAX_HEAD_CHARS = 200;
 const LINKED_ISSUE = /\b(?:close[sd]?|fix(?:e[sd])?|resolve[sd]?)\s+(?:[\w.-]+\/[\w.-]+)?#(\d+)/gi;
 
 interface ApiPull {
@@ -48,17 +50,28 @@ function threads(comments: ApiReviewComment[]): ApiReviewComment[][] {
   return Array.from(byRoot.values());
 }
 
-/** One chunk per review thread that has a maintainer reply; the thread's first comment names the file and line. */
+function threadHead(comment: ApiReviewComment): string {
+  const head = `${comment.path}:${comment.line ?? ''}`;
+  return head.length <= MAX_HEAD_CHARS ? head : `…${head.slice(head.length - MAX_HEAD_CHARS + 1)}`;
+}
+
+/**
+ * Chunks of the review threads that have a maintainer reply: one chunk per
+ * comment, each carrying its own role from the API association, so a user's
+ * question in a thread never borrows the maintainer's authority. Every chunk
+ * starts with the thread's `path:line` head.
+ */
 function reviewChunks(comments: ApiReviewComment[], firstSeq: number, author: string): IndexChunk[] {
   const chunks: IndexChunk[] = [];
   for (const thread of threads(comments)) {
-    const maintainer = thread.find((c) => roleOf(c.author_association, c.user?.login, author) === 'maintainer');
-    if (!maintainer) continue;
-    const head = `${thread[0].path}:${thread[0].line ?? ''}`;
-    const body = thread.map((c) => cleanIssueText(c.body ?? '').text).filter(Boolean).join('\n\n');
-    for (const piece of packText(body, { maxChars: CHUNK_CHARS - head.length - 1 })) {
-      chunks.push({ seq: firstSeq + chunks.length, kind: 'review', heading: head, text: `${head}\n${piece}`, logs: null, createdAt: maintainer.created_at, authorRole: 'maintainer' });
-    }
+    const roles = thread.map((c) => roleOf(c.author_association, c.user?.login, author));
+    if (!roles.includes('maintainer')) continue;
+    const head = threadHead(thread[0]);
+    thread.forEach((comment, i) => {
+      for (const piece of packText(cleanIssueText(comment.body ?? '').text, { maxChars: CHUNK_CHARS - head.length - 1 })) {
+        chunks.push({ seq: firstSeq + chunks.length, kind: 'review', heading: head, text: `${head}\n${piece}`, logs: null, createdAt: comment.created_at, authorRole: roles[i] });
+      }
+    });
   }
   return chunks;
 }

@@ -50,3 +50,8 @@ test('chunkMarkdown never emits a chunk above maxChars', () => {
   const chunks = chunkMarkdown(md, { maxChars: 500 });
   assert.ok(chunks.every((c) => c.text.length <= 500));
 });
+
+test('packText rejects a size that could never hold a character', () => {
+  assert.throws(() => packText('abc', { maxChars: 0 }), /maxChars/);
+  assert.throws(() => packText('abc', { maxChars: -5 }), /maxChars/);
+});
