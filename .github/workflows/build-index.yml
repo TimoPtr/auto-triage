@@ -1,0 +1,135 @@
+---
+name: Build knowledge index
+
+on:  # yamllint disable-line rule:truthy
+  workflow_call:
+    inputs:
+      slug:
+        description: Product slug; prefix of the cache keys and artifact names.
+        type: string
+        required: true
+      config:
+        description: Path of the consumer config.
+        type: string
+        default: .github/knowledge-bot.yaml
+      checkouts:
+        description: Newline-separated owner/repo list of extra repositories read from a checkout (docs).
+        type: string
+        default: ''
+      timeout-minutes:
+        description: Job timeout; the build itself stops 20 minutes earlier so the raw store is still published.
+        type: number
+        default: 350
+      tracking:
+        description: Keep a tracking issue open while the index is stale, unusable or missing.
+        type: boolean
+        default: true
+
+permissions: {}
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: ${{ inputs.timeout-minutes }}
+    concurrency:
+      group: knowledge-index-${{ inputs.slug }}
+      cancel-in-progress: false
+    permissions:
+      contents: read
+      actions: read
+      issues: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - id: self
+        env:
+          JOB_WORKFLOW_REF: ${{ github.job_workflow_ref }}
+        run: |
+          set -euo pipefail
+          echo "repo=${JOB_WORKFLOW_REF%%/.github/*}" >> "$GITHUB_OUTPUT"
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: ${{ steps.self.outputs.repo }}
+          ref: ${{ github.job_workflow_sha }}
+          path: .knowledge-bot/auto-triage
+          persist-credentials: false
+      - uses: ./.knowledge-bot/auto-triage/actions/setup-bot
+        with:
+          config: ${{ inputs.config }}
+      - id: previous
+        uses: ./.knowledge-bot/auto-triage/actions/restore-index
+        with:
+          slug: ${{ inputs.slug }}
+          config: ${{ inputs.config }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+      - id: checkouts
+        env:
+          CHECKOUTS: ${{ inputs.checkouts }}
+          OWN_REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          args=(--self . --checkout "$OWN_REPO=.")
+          while IFS= read -r repo; do
+            repo="${repo//[[:space:]]/}"
+            [ -z "$repo" ] && continue
+            [[ "$repo" =~ ^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$ ]] || { echo "bad checkout $repo" >&2; exit 1; }
+            dir=".knowledge-bot/checkouts/$repo"
+            git clone --depth 1 --quiet "https://github.com/$repo.git" "$dir"
+            args+=(--checkout "$repo=$dir")
+          done <<< "$CHECKOUTS"
+          printf '%s\n' "${args[@]}" > .knowledge-bot/checkout-args
+      - id: build
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          CONFIG: ${{ inputs.config }}
+          INDEX: ${{ steps.previous.outputs.index-path }}
+          RAW: ${{ steps.previous.outputs.raw-path }}
+          PREVIOUS_USABLE: ${{ steps.previous.outputs.usable }}
+          TIMEOUT_MINUTES: ${{ inputs.timeout-minutes }}
+        run: |
+          set -euo pipefail
+          mapfile -t args < .knowledge-bot/checkout-args
+          previous=()
+          if [ "$PREVIOUS_USABLE" = "true" ]; then cp "$INDEX" "$INDEX.previous"; previous=(--previous "$INDEX.previous"); fi
+          # Stop before the job timeout: a step that fails still runs the failure steps, a cancelled job does not.
+          margin=20
+          [ "$TIMEOUT_MINUTES" -gt 40 ] || margin=$((TIMEOUT_MINUTES / 4))
+          timeout --kill-after=60 "$(((TIMEOUT_MINUTES - margin) * 60))" \
+            node "$BOT_SCRIPTS_DIR/src/cli/build.ts" --config "$CONFIG" --out "$INDEX" --raw "$RAW" \
+              --model-cache "$KB_MODEL_CACHE" "${previous[@]}" "${args[@]}"
+          rm -f "$INDEX.previous"
+      - if: success()
+        uses: ./.knowledge-bot/auto-triage/actions/publish-index
+        with:
+          slug: ${{ inputs.slug }}
+          config: ${{ inputs.config }}
+          index-path: ${{ steps.previous.outputs.index-path }}
+          raw-path: ${{ steps.previous.outputs.raw-path }}
+      # A build that died on the rate limit keeps its raw store progress for the next run.
+      - if: failure() && steps.build.outcome == 'failure'
+        uses: ./.knowledge-bot/auto-triage/actions/publish-index
+        with:
+          slug: ${{ inputs.slug }}
+          config: ${{ inputs.config }}
+          index-path: ${{ steps.previous.outputs.index-path }}
+          raw-path: ${{ steps.previous.outputs.raw-path }}
+          publish-index: 'false'
+      - id: status
+        if: always() && steps.previous.outcome == 'success'
+        env:
+          CONFIG: ${{ inputs.config }}
+          INDEX: ${{ steps.previous.outputs.index-path }}
+        run: node "$BOT_SCRIPTS_DIR/src/cli/index-status.ts" --config "$CONFIG" --index "$INDEX"
+      - if: always() && steps.status.outcome == 'success'
+        uses: ./.knowledge-bot/auto-triage/actions/report-index-status
+        with:
+          slug: ${{ inputs.slug }}
+          status: ${{ steps.status.outputs.status }}
+          source: ${{ steps.build.outcome == 'success' && 'build' || steps.previous.outputs.source }}
+          age-days: ${{ steps.status.outputs.age-days }}
+          reason: ${{ steps.status.outputs.reason }}
+          tracking: ${{ inputs.tracking }}
+        env:
+          GH_TOKEN: ${{ github.token }}
