@@ -10,3 +10,7 @@ test('strips tags, keeps paragraph breaks and decodes entities', () => {
 test('keeps code blocks as fenced text', () => {
   assert.equal(htmlToText('<pre><code>key: value\n</code></pre>'), '```\nkey: value\n```');
 });
+
+test('an out-of-range numeric entity becomes the replacement character instead of throwing', () => {
+  assert.equal(htmlToText('a &#9999999999; b &#x110000; c &#xD800;'), 'a � b � c �');
+});
