@@ -69,7 +69,8 @@ export function docUrl(relativePath: string, frontMatter: FrontMatter, baseUrl: 
     const url = onSite(pageOf(name), base, true);
     if (url) return url;
   }
-  return onSite(pageOf(file), base, true) ?? new URL(pageOf(file), base).toString();
+  // A file name that cannot form an on-site link (such as `host:x.md`) links the docs root, never off site.
+  return onSite(pageOf(file), base, true) ?? base.toString().replace(/\/$/, '');
 }
 
 function firstHeading(body: string): string | null {

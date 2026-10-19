@@ -87,4 +87,5 @@ test('docUrl keeps every front matter link on the docs site', async () => {
   assert.equal(docUrl('x.md', { id: '../../etc' }, base), 'https://example.test/docs/x');
   assert.equal(docUrl('x.md', { slug: '/tools/debugging' }, base), 'https://example.test/tools/debugging');
   assert.equal(docUrl('sub/x.md', { id: 'custom' }, base), 'https://example.test/docs/sub/custom');
+  assert.equal(docUrl('evil.example:x.md', {}, base), 'https://example.test/docs');
 });
