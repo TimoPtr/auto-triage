@@ -87,3 +87,18 @@ test('wires every configured source kind and the discourse provider', async () =
   assert.ok(raw.count() >= 2, 'the issues were recorded in the raw store');
   raw.close();
 });
+
+test('logs the item count and elapsed time of every provider and of the whole build', async () => {
+  const config = loadConfig(join(fixtures, 'config/android.yaml'));
+  delete config.providers.github['home-assistant/android'].code;
+  delete config.providers.github['home-assistant/android'].files;
+  delete config.providers.discourse;
+  config.providers.github['home-assistant/companion.home-assistant'].docs.path = 'docs';
+  config.providers.github['home-assistant/contributors.home-assistant.io'].docs.path = 'docs/android';
+  const checkouts = { 'home-assistant/companion.home-assistant': fixtures, 'home-assistant/contributors.home-assistant.io': fixtures };
+  const providers = createProviders(config, { githubToken: 't', fetchImpl: fakeFetch, checkouts, now: new Date('2026-10-15T00:00:00Z') });
+  const lines = [];
+  await buildIndex({ config, configHash: 't', outPath: join(tmp, 'timed.sqlite'), embedder, providers, log: (l) => lines.push(l) });
+  assert.ok(lines.some((l) => /^github: 8 items in \d+(\.\d+)?s$/.test(l)), lines.join('\n'));
+  assert.ok(lines.some((l) => /^build finished in \d+(\.\d+)?s$/.test(l)), lines.join('\n'));
+});
