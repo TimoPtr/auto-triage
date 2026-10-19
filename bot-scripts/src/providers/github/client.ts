@@ -1,8 +1,16 @@
 import { setTimeout as sleep } from 'node:timers/promises';
 
 const NEXT_LINK = /<([^>]+)>;\s*rel="next"/;
-/** Longest wait on an exhausted rate limit; a longer reset fails the request instead of hanging the job. */
-export const MAX_RATE_LIMIT_WAIT_SECONDS = 15 * 60;
+/**
+ * Longest wait on an exhausted rate limit: one full hourly window, since a
+ * complete build of a large repository spends more than one window and a
+ * failed build costs far more than an idle hour.
+ */
+export const MAX_RATE_LIMIT_WAIT_SECONDS = 61 * 60;
+/** Added to the announced reset so a retry does not land a second before the window really reopens. */
+export const RATE_LIMIT_MARGIN_SECONDS = 5;
+/** Rate-limit waits per request before giving up. */
+const MAX_RATE_LIMIT_WAITS = 3;
 /** Retries on a thrown fetch error or a 5xx response; a long build must survive a dropped socket. */
 export const MAX_TRANSIENT_RETRIES = 3;
 const BACKOFF_MS = [1000, 2000, 4000];
@@ -41,7 +49,7 @@ function retryDelaySeconds(response: Response): number | null {
   if (response.headers.get('x-ratelimit-remaining') !== '0') return null;
   const reset = response.headers.get('x-ratelimit-reset');
   if (reset === null) return null;
-  return Math.max(0, Number(reset) - Math.floor(Date.now() / 1000));
+  return Math.max(0, Number(reset) - Math.floor(Date.now() / 1000)) + RATE_LIMIT_MARGIN_SECONDS;
 }
 
 function isTransient(response: Response | null, error: unknown): boolean {
@@ -85,8 +93,9 @@ export function createGitHubClient({ token, fetchImpl = fetch, baseUrl = 'https:
 
   async function request(url: string, init: RequestInit = { headers }): Promise<Response> {
     let response = await fetchOnce(url, init);
-    const delay = retryDelaySeconds(response);
-    if (delay !== null) {
+    for (let waits = 0; waits < MAX_RATE_LIMIT_WAITS; waits += 1) {
+      const delay = retryDelaySeconds(response);
+      if (delay === null) break;
       const wait = Math.min(delay, MAX_RATE_LIMIT_WAIT_SECONDS);
       log(`GitHub rate limit hit, waiting ${wait}s before retrying ${url}`);
       await sleepImpl(wait * 1000);

@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { createGitHubClient } from '../../../src/providers/github/client.ts';
+import { createGitHubClient, MAX_RATE_LIMIT_WAIT_SECONDS, RATE_LIMIT_MARGIN_SECONDS } from '../../../src/providers/github/client.ts';
 
 /** @param {Record<string, { status?: number, headers?: Record<string,string>, body: unknown }>} routes */
 function fakeFetch(routes, log = []) {
@@ -63,9 +63,9 @@ test('a 403 that is not a rate limit fails fast without sleeping', async () => {
   assert.deepEqual(sleeps, []);
 });
 
-test('an exhausted rate limit waits until reset, capped at the maximum wait', async () => {
+test('an exhausted rate limit waits until reset plus a margin, capped at the maximum wait', async () => {
   let calls = 0;
-  const reset = String(Math.floor(Date.now() / 1000) + 3600);
+  const reset = String(Math.floor(Date.now() / 1000) + 3600 * 2);
   const fetchImpl = async () => {
     calls += 1;
     return calls === 1
@@ -76,7 +76,32 @@ test('an exhausted rate limit waits until reset, capped at the maximum wait', as
   const client = createGitHubClient({ token: 't', fetchImpl, sleepImpl: async (ms) => { sleeps.push(ms); } });
   assert.deepEqual(await client.getJson('/x'), { ok: true });
   assert.equal(calls, 2);
-  assert.deepEqual(sleeps, [15 * 60 * 1000]);
+  assert.deepEqual(sleeps, [MAX_RATE_LIMIT_WAIT_SECONDS * 1000]);
+  assert.equal(MAX_RATE_LIMIT_WAIT_SECONDS, 61 * 60);
+});
+
+test('a rate limit that is still exhausted right after the reset is waited out again', async () => {
+  let calls = 0;
+  const reset = String(Math.floor(Date.now() / 1000) + 60);
+  const fetchImpl = async () => {
+    calls += 1;
+    return calls <= 2
+      ? new Response('{"message":"rate"}', { status: 403, headers: { 'x-ratelimit-remaining': '0', 'x-ratelimit-reset': reset } })
+      : new Response('{"ok":true}', { status: 200, headers: { 'content-type': 'application/json' } });
+  };
+  const sleeps = [];
+  const client = createGitHubClient({ token: 't', fetchImpl, sleepImpl: async (ms) => { sleeps.push(ms); } });
+  assert.deepEqual(await client.getJson('/x'), { ok: true });
+  assert.equal(calls, 3);
+  assert.equal(sleeps.length, 2);
+  assert.ok(sleeps.every((ms) => ms >= 60 * 1000 + RATE_LIMIT_MARGIN_SECONDS * 1000 - 1000), `margin added: ${sleeps}`);
+});
+
+test('gives up after the rate-limit wait budget', async () => {
+  const reset = String(Math.floor(Date.now() / 1000) + 10);
+  const fetchImpl = async () => new Response('{"message":"rate"}', { status: 403, headers: { 'x-ratelimit-remaining': '0', 'x-ratelimit-reset': reset } });
+  const client = createGitHubClient({ token: 't', fetchImpl, sleepImpl: async () => {} });
+  await assert.rejects(() => client.getJson('/x'), /403/);
 });
 
 test('retries a transient network error with backoff', async () => {
