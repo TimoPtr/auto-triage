@@ -1,0 +1,82 @@
+---
+name: Publish the knowledge index
+description: Saves the index and raw store to the Actions cache and uploads them as artifacts.
+inputs:
+  slug:
+    description: Product slug.
+    required: true
+  config:
+    description: Consumer config path.
+    default: .github/knowledge-bot.yaml
+  index-path:
+    description: Index file to publish.
+    required: true
+  raw-path:
+    description: Raw store file to publish, when present.
+    default: ''
+  retention-days:
+    description: Artifact retention in days.
+    default: '30'
+  publish-index:
+    description: Publish the index; false publishes only the raw store.
+    default: 'true'
+runs:
+  using: composite
+  steps:
+    - id: versions
+      shell: bash
+      run: node "$BOT_SCRIPTS_DIR/src/cli/index-status.ts" --versions
+    - id: status
+      if: inputs.publish-index == 'true'
+      shell: bash
+      env:
+        CONFIG: ${{ inputs.config }}
+        INDEX: ${{ inputs.index-path }}
+      run: node "$BOT_SCRIPTS_DIR/src/cli/index-status.ts" --config "$CONFIG" --index "$INDEX"
+    - if: inputs.publish-index == 'true'
+      shell: bash
+      env:
+        USABLE: ${{ steps.status.outputs.usable }}
+        REASON: ${{ steps.status.outputs.reason }}
+        ITEMS: ${{ steps.status.outputs.items }}
+        CHUNKS: ${{ steps.status.outputs.chunks }}
+        INDEX: ${{ inputs.index-path }}
+        RAW: ${{ inputs.raw-path }}
+      run: |
+        set -euo pipefail
+        [ "$USABLE" = "true" ] || { echo "refusing to publish an unusable index: $REASON" >&2; exit 1; }
+        raw_size=none
+        if [ -n "$RAW" ] && [ -f "$RAW" ]; then raw_size="$(du -h "$RAW" | cut -f1)"; fi
+        echo "published index: $ITEMS items, $CHUNKS chunks, $(du -h "$INDEX" | cut -f1); raw store: $raw_size" >> "$GITHUB_STEP_SUMMARY"
+    - if: inputs.publish-index == 'true'
+      uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      with:
+        path: ${{ inputs.index-path }}
+        key: ${{ inputs.slug }}-index-v${{ steps.versions.outputs.format-version }}-${{ github.run_id }}-${{ github.run_attempt }}
+    - if: inputs.publish-index == 'true'
+      uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+      with:
+        name: ${{ inputs.slug }}-index
+        path: ${{ inputs.index-path }}
+        retention-days: ${{ inputs.retention-days }}
+        overwrite: true
+        if-no-files-found: error
+    - id: raw
+      shell: bash
+      env:
+        RAW: ${{ inputs.raw-path }}
+      run: |
+        set -euo pipefail
+        if [ -n "$RAW" ] && [ -f "$RAW" ]; then echo "present=true" >> "$GITHUB_OUTPUT"; else echo "present=false" >> "$GITHUB_OUTPUT"; fi
+    - if: steps.raw.outputs.present == 'true'
+      uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      with:
+        path: ${{ inputs.raw-path }}
+        key: ${{ inputs.slug }}-raw-v${{ steps.versions.outputs.raw-schema-version }}-${{ github.run_id }}-${{ github.run_attempt }}
+    - if: steps.raw.outputs.present == 'true'
+      uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+      with:
+        name: ${{ inputs.slug }}-raw
+        path: ${{ inputs.raw-path }}
+        retention-days: ${{ inputs.retention-days }}
+        overwrite: true
