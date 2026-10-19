@@ -77,3 +77,14 @@ test('skips symbolic links', async () => {
     rmSync(link);
   }
 });
+
+test('docUrl keeps every front matter link on the docs site', async () => {
+  const { docUrl } = await import('../../../src/providers/github/docs.ts');
+  const base = 'https://example.test/docs/';
+  assert.equal(docUrl('x.md', { slug: '/\\evil.example/phish' }, base), 'https://example.test/docs/x');
+  assert.equal(docUrl('x.md', { id: 'https://evil.example/phish' }, base), 'https://example.test/docs/x');
+  assert.equal(docUrl('x.md', { id: '//evil.example/phish' }, base), 'https://example.test/docs/x');
+  assert.equal(docUrl('x.md', { id: '../../etc' }, base), 'https://example.test/docs/x');
+  assert.equal(docUrl('x.md', { slug: '/tools/debugging' }, base), 'https://example.test/tools/debugging');
+  assert.equal(docUrl('sub/x.md', { id: 'custom' }, base), 'https://example.test/docs/sub/custom');
+});

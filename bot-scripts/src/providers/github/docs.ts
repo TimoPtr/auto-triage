@@ -9,8 +9,6 @@ import type { IndexChunk, IndexItem } from '../types.ts';
 export const DOCS_EPOCH = '1970-01-01T00:00:00Z';
 const EXTENSIONS = new Set(['.md', '.mdx']);
 const FRONT_MATTER = /^---\n([\s\S]*?)\n---\n?/;
-/** A slug is only trusted as a site-absolute path: `//host/x` would point the link off site. */
-const ABSOLUTE_SLUG = /^\/[^/]/;
 
 export type FrontMatter = Record<string, unknown>;
 
@@ -36,18 +34,42 @@ async function* walk(dir: string): AsyncGenerator<string> {
   }
 }
 
-/** @param relativePath path relative to the docs root, POSIX separators */
+/** The URL only when it stays on the base origin and (for relative names) under the base path. */
+function onSite(candidate: string, base: URL, underBase: boolean): string | null {
+  let url: URL;
+  try {
+    url = new URL(candidate, underBase ? base : base.origin);
+  } catch {
+    return null;
+  }
+  if (url.origin !== base.origin) return null;
+  if (underBase && !url.pathname.startsWith(base.pathname)) return null;
+  return url.toString().replace(/\/$/, '');
+}
+
+/**
+ * Link of a page. Front matter is untrusted: a `slug` must be a site-absolute
+ * path and an `id` a name under the docs base; anything else falls back to the
+ * file path. The check is on the parsed URL, not the raw string, so parser
+ * quirks such as `/\host` cannot point off site.
+ * @param relativePath path relative to the docs root, POSIX separators
+ */
 export function docUrl(relativePath: string, frontMatter: FrontMatter, baseUrl: string): string {
   const base = new URL(baseUrl);
-  const slug = frontMatter.slug;
-  if (typeof slug === 'string' && ABSOLUTE_SLUG.test(slug)) {
-    return new URL(slug, base.origin).toString();
+  const { slug, id } = frontMatter;
+  if (typeof slug === 'string' && slug.startsWith('/')) {
+    const url = onSite(slug, base, false);
+    if (url) return url;
   }
   const dir = dirname(relativePath) === '.' ? '' : `${dirname(relativePath)}/`;
   const file = basename(relativePath, extname(relativePath));
-  const name = String(frontMatter.id ?? (typeof slug === 'string' && !slug.startsWith('/') ? slug : null) ?? file);
-  const page = name === 'index' ? dir.replace(/\/$/, '') : `${dir}${name}`;
-  return new URL(page, base).toString().replace(/\/$/, '');
+  const pageOf = (name: string) => (name === 'index' ? dir.replace(/\/$/, '') : `${dir}${name}`);
+  for (const name of [id, typeof slug === 'string' && !slug.startsWith('/') ? slug : null]) {
+    if (typeof name !== 'string' || !name) continue;
+    const url = onSite(pageOf(name), base, true);
+    if (url) return url;
+  }
+  return onSite(pageOf(file), base, true) ?? new URL(pageOf(file), base).toString();
 }
 
 function firstHeading(body: string): string | null {
