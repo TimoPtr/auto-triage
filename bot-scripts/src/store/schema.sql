@@ -3,7 +3,7 @@
 
 CREATE TABLE items (
   id          INTEGER PRIMARY KEY,
-  source      TEXT NOT NULL,   -- docs | issue | pull | discussion | forum | code | file
+  source      TEXT NOT NULL,   -- docs | issue | pull | discussion | release | forum | code | file
   provider    TEXT NOT NULL,   -- github | discourse | ...
   origin      TEXT NOT NULL,   -- repository or host
   source_id   TEXT NOT NULL,   -- issue number, topic id, page slug, file path

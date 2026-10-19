@@ -1,6 +1,6 @@
 import type { Audience } from '../config/types.ts';
 
-export type SourceKind = 'docs' | 'issue' | 'pull' | 'discussion' | 'forum' | 'code' | 'file';
+export type SourceKind = 'docs' | 'issue' | 'pull' | 'discussion' | 'release' | 'forum' | 'code' | 'file';
 export type ChunkKind = 'body' | 'comment' | 'review' | 'answer' | 'section' | 'symbol';
 export type AuthorRole = 'reporter' | 'maintainer' | 'user';
 
