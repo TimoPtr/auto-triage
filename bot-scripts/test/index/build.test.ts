@@ -36,12 +36,12 @@ test('builds an index from the android fixture config with issues and docs', asy
   const providers = createProviders(config, { githubToken: 't', fetchImpl: fakeFetch, checkouts, now: new Date('2026-10-15T00:00:00Z') });
   const out = join(tmp, 'knowledge.sqlite');
   const stats = await buildIndex({ config, configHash: 'abc', outPath: out, embedder, providers });
-  // two indexable issues (one closed in the window, one long-standing open), three docs fixtures under docs/, two under docs/android
-  assert.equal(stats.items, 2 + 3 + 2);
+  // two indexable issues (one closed in the window, one long-standing open), four docs fixtures under docs/ (evil.md included), two under docs/android
+  assert.equal(stats.items, 2 + 4 + 2);
   const db = openDatabase(out, { readOnly: true });
   // node:sqlite rows have a null prototype, which strict deepEqual rejects; compare plain copies
   const sources = db.prepare('SELECT source, count(*) c FROM items GROUP BY source ORDER BY source').all().map((r) => ({ ...r }));
-  assert.deepEqual(sources, [{ source: 'docs', c: 5 }, { source: 'issue', c: 2 }]);
+  assert.deepEqual(sources, [{ source: 'docs', c: 6 }, { source: 'issue', c: 2 }]);
   const meta = readMeta(db);
   assert.equal(meta.product, 'android');
   assert.equal(meta.config_hash, 'abc');
