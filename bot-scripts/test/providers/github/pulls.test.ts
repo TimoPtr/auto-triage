@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { readPulls } from '../../../src/providers/github/pulls.ts';
+import { readPull, readPulls } from '../../../src/providers/github/pulls.ts';
 import { openRawStore } from '../../../src/store/raw.ts';
 import type { PullsConfig } from '../../../src/config/types.ts';
 
@@ -22,6 +22,10 @@ function fakeClient(log = []) {
       else if (path === '/repos/o/r/pulls/40/comments') yield* reviewComments;
       else if (path === '/repos/o/r/pulls/40/files') yield* files;
       else yield* [];
+    },
+    async getJson(path) {
+      log.push({ path });
+      return page.find((p) => p.number === Number(path.split('/').pop()));
     },
   };
 }
@@ -119,4 +123,17 @@ test('a pass without reviews does not hide them from a later pass with reviews o
   assert.equal(pr.chunks.filter((c) => c.kind === 'review').length, 2);
   assert.deepEqual(pr.outcome.files, ['app/src/main/kotlin/Widget.kt', 'CHANGELOG.md']);
   raw.close();
+});
+
+test('readPull fetches one merged pull request with its review threads', async () => {
+  const pr = await readPull({ client: fakeClient(), repo: 'o/r', number: 40, options, now });
+  assert.equal(pr.outcome.state, 'merged');
+  assert.equal(pr.chunks.filter((c) => c.kind === 'review').length, 2);
+});
+
+test('readPull returns null for a bot author, an unwanted state or an open pull request', async () => {
+  assert.equal(await readPull({ client: fakeClient(), repo: 'o/r', number: 41, options, now }), null);
+  assert.equal(await readPull({ client: fakeClient(), repo: 'o/r', number: 42, options: { ...options, states: ['merged'] }, now }), null);
+  const open = { async getJson() { return { ...page[0], state: 'open', merged_at: null, closed_at: null }; }, async *paginate() { yield* []; } };
+  assert.equal(await readPull({ client: open, repo: 'o/r', number: 40, options, now }), null);
 });

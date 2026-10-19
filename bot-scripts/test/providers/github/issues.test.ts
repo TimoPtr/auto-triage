@@ -4,7 +4,7 @@ import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { openRawStore } from '../../../src/store/raw.ts';
-import { readIssues } from '../../../src/providers/github/issues.ts';
+import { readIssue, readIssues } from '../../../src/providers/github/issues.ts';
 import type { IssuesConfig } from '../../../src/config/types.ts';
 
 const page = JSON.parse(readFileSync(new URL('../../fixtures/github/issues-page.json', import.meta.url), 'utf8'));
@@ -17,6 +17,10 @@ function fakeClient(log = []) {
       if (path === '/repos/o/r/issues') yield* page.filter((i) => params.state === 'all' || i.state === params.state);
       else if (path === '/repos/o/r/issues/12/comments') yield* comments;
       else yield* [];
+    },
+    async getJson(path) {
+      log.push({ path });
+      return page.find((i) => i.number === Number(path.split('/').pop()));
     },
   };
 }
@@ -161,4 +165,16 @@ test('a pass without comments does not hide them from a later pass with comments
   const issue = items.find((i) => i.sourceId === '12');
   assert.equal(issue.chunks.filter((c) => c.kind === 'comment').length, comments.length);
   raw.close();
+});
+
+test('readIssue fetches one issue with its comments', async () => {
+  const issue = await readIssue({ client: fakeClient(), repo: 'o/r', number: 12, options });
+  assert.equal(issue.sourceId, '12');
+  assert.equal(issue.chunks.filter((c) => c.kind === 'comment').length, comments.length);
+  assert.equal(issue.chunks[1].authorRole, 'maintainer');
+});
+
+test('readIssue returns null for a pull request or an unwanted state', async () => {
+  assert.equal(await readIssue({ client: fakeClient(), repo: 'o/r', number: 13, options }), null);
+  assert.equal(await readIssue({ client: fakeClient(), repo: 'o/r', number: 12, options: { ...options, states: ['open'] } }), null);
 });

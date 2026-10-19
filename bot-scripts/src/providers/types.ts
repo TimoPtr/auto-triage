@@ -39,5 +39,6 @@ export interface Provider {
 /** The part of the GitHub client the readers depend on. */
 export interface PaginatingClient {
   paginate(path: string, params?: Record<string, string | number | boolean>): AsyncIterable<unknown>;
+  getJson?<T = unknown>(path: string, params?: Record<string, string | number | boolean>): Promise<T>;
   graphql?<T = unknown>(query: string, variables?: Record<string, unknown>): Promise<T>;
 }

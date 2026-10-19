@@ -97,32 +97,57 @@ async function pullDetails(client: PaginatingClient, repo: string, pull: ApiPull
   return details;
 }
 
+/** The index item of one pull request with its review threads and files. */
+export function pullItem(pull: ApiPull, { reviewComments, files }: PullDetails, repo: string): IndexItem {
+  const author = pull.user?.login ?? '';
+  const { text, logs } = cleanIssueText(pull.body ?? '');
+  const chunks: IndexChunk[] = [];
+  for (const piece of packText([pull.title, text].filter(Boolean).join('\n\n'), { maxChars: CHUNK_CHARS })) {
+    chunks.push({ seq: chunks.length, kind: 'body', text: piece, logs: chunks.length === 0 ? logs : null, createdAt: pull.created_at, authorRole: 'reporter' });
+  }
+  chunks.push(...reviewChunks(reviewComments, chunks.length, author));
+  return {
+    source: 'pull', provider: 'github', origin: repo, sourceId: String(pull.number), url: pull.html_url, title: pull.title,
+    audience: 'user', createdAt: pull.created_at, updatedAt: pull.updated_at,
+    outcome: { state: stateOf(pull), mergedAt: pull.merged_at, closedAt: pull.closed_at, labels: (pull.labels ?? []).map((l) => l.name), linkedIssues: linkedIssues(pull.body ?? ''), files, base: pull.base?.ref ?? null },
+    extra: { author }, chunks,
+  };
+}
+
+function stateOf(pull: ApiPull): 'merged' | 'closed' {
+  return pull.merged_at ? 'merged' : 'closed';
+}
+
+function cutoffOf(options: PullsConfig, now: Date): Date | null {
+  return options.closedWithinDays === undefined ? null : new Date(now.getTime() - options.closedWithinDays * DAY_MS);
+}
+
+/** Whether a closed pull request is one the config wants: state, author and window. */
+function qualifies(pull: ApiPull, options: PullsConfig, cutoff: Date | null): boolean {
+  if (!options.states.includes(stateOf(pull))) return false;
+  if (options.excludeBots && isBot(pull)) return false;
+  if (cutoff && pull.closed_at && new Date(pull.closed_at) < cutoff) return false;
+  return true;
+}
+
 export interface ReadPullsInput { client: PaginatingClient; repo: string; options: PullsConfig; now?: Date; raw?: RawStore }
 
 /** Reads closed pull requests, merged or not, with their maintainer review threads. */
 export async function* readPulls({ client, repo, options, now = new Date(), raw }: ReadPullsInput): AsyncGenerator<IndexItem> {
-  const cutoff = options.closedWithinDays === undefined ? null : new Date(now.getTime() - options.closedWithinDays * DAY_MS);
-  const wanted = new Set(options.states);
+  const cutoff = cutoffOf(options, now);
   for await (const element of client.paginate(`/repos/${repo}/pulls`, { state: 'closed', per_page: 100, sort: 'updated', direction: 'asc' })) {
     const pull = element as ApiPull;
-    const state = pull.merged_at ? 'merged' : 'closed';
-    if (!wanted.has(state)) continue;
-    if (options.excludeBots && isBot(pull)) continue;
-    if (cutoff && pull.closed_at && new Date(pull.closed_at) < cutoff) continue;
-
-    const author = pull.user?.login ?? '';
-    const { text, logs } = cleanIssueText(pull.body ?? '');
-    const chunks: IndexChunk[] = [];
-    for (const piece of packText([pull.title, text].filter(Boolean).join('\n\n'), { maxChars: CHUNK_CHARS })) {
-      chunks.push({ seq: chunks.length, kind: 'body', text: piece, logs: chunks.length === 0 ? logs : null, createdAt: pull.created_at, authorRole: 'reporter' });
-    }
-    const { reviewComments, files } = await pullDetails(client, repo, pull, options.reviews, raw);
-    chunks.push(...reviewChunks(reviewComments, chunks.length, author));
-    yield {
-      source: 'pull', provider: 'github', origin: repo, sourceId: String(pull.number), url: pull.html_url, title: pull.title,
-      audience: 'user', createdAt: pull.created_at, updatedAt: pull.updated_at,
-      outcome: { state, mergedAt: pull.merged_at, closedAt: pull.closed_at, labels: (pull.labels ?? []).map((l) => l.name), linkedIssues: linkedIssues(pull.body ?? ''), files, base: pull.base?.ref ?? null },
-      extra: { author }, chunks,
-    };
+    if (!qualifies(pull, options, cutoff)) continue;
+    yield pullItem(pull, await pullDetails(client, repo, pull, options.reviews, raw), repo);
   }
+}
+
+export interface ReadPullInput { client: PaginatingClient; repo: string; number: number; options: PullsConfig; now?: Date; raw?: RawStore }
+
+/** One pull request by number, or null when it is open or the config does not want it. */
+export async function readPull({ client, repo, number, options, now = new Date(), raw }: ReadPullInput): Promise<IndexItem | null> {
+  if (!client.getJson) throw new Error('readPull needs a client with getJson');
+  const pull = await client.getJson<ApiPull>(`/repos/${repo}/pulls/${number}`);
+  if (pull.state !== 'closed' || !qualifies(pull, options, cutoffOf(options, now))) return null;
+  return pullItem(pull, await pullDetails(client, repo, pull, options.reviews, raw), repo);
 }

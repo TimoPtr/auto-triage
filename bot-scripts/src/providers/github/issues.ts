@@ -77,6 +77,38 @@ async function issueComments(client: PaginatingClient, repo: string, issue: ApiI
   return comments;
 }
 
+/** The index item of one issue and its comments. */
+export function issueItem(issue: ApiIssue, comments: ApiComment[], repo: string): IndexItem {
+  const { text, logs } = cleanIssueText(issue.body ?? '');
+  const reporter = issue.user?.login ?? '';
+  const chunks: IndexChunk[] = [];
+  const bodyText = [issue.title, text].filter(Boolean).join('\n\n');
+  for (const piece of packText(bodyText, { maxChars: CHUNK_CHARS })) {
+    chunks.push({ seq: chunks.length, kind: 'body', text: piece, logs: chunks.length === 0 ? logs : null, createdAt: issue.created_at, authorRole: 'reporter' });
+  }
+  for (const comment of comments) chunks.push(...commentChunks(comment, chunks.length, reporter));
+  return {
+    source: 'issue',
+    provider: 'github',
+    origin: repo,
+    sourceId: String(issue.number),
+    url: issue.html_url,
+    title: issue.title,
+    audience: 'user',
+    createdAt: issue.created_at,
+    updatedAt: issue.updated_at,
+    outcome: {
+      state: issue.state,
+      stateReason: issue.state_reason ?? null,
+      labels: (issue.labels ?? []).map((l) => l.name),
+      closedAt: issue.closed_at ?? null,
+      reactions: { up: issue.reactions?.['+1'] ?? 0, down: issue.reactions?.['-1'] ?? 0 },
+    },
+    extra: { reporter },
+    chunks,
+  };
+}
+
 export interface ReadIssuesInput {
   client: PaginatingClient;
   repo: string;
@@ -105,38 +137,16 @@ export async function* readIssues({ client, repo, options, now = new Date(), raw
     if (issue.pull_request) continue;
     if (!wanted.has(issue.state)) continue;
     if (cutoff && issue.state === 'closed' && issue.closed_at && new Date(issue.closed_at) < cutoff) continue;
-
-    const { text, logs } = cleanIssueText(issue.body ?? '');
-    const reporter = issue.user?.login ?? '';
-    const chunks: IndexChunk[] = [];
-    const bodyText = [issue.title, text].filter(Boolean).join('\n\n');
-    for (const piece of packText(bodyText, { maxChars: CHUNK_CHARS })) {
-      chunks.push({ seq: chunks.length, kind: 'body', text: piece, logs: chunks.length === 0 ? logs : null, createdAt: issue.created_at, authorRole: 'reporter' });
-    }
-
-    for (const comment of await issueComments(client, repo, issue, options.comments, raw)) {
-      chunks.push(...commentChunks(comment, chunks.length, reporter));
-    }
-
-    yield {
-      source: 'issue',
-      provider: 'github',
-      origin: repo,
-      sourceId: String(issue.number),
-      url: issue.html_url,
-      title: issue.title,
-      audience: 'user',
-      createdAt: issue.created_at,
-      updatedAt: issue.updated_at,
-      outcome: {
-        state: issue.state,
-        stateReason: issue.state_reason ?? null,
-        labels: (issue.labels ?? []).map((l) => l.name),
-        closedAt: issue.closed_at ?? null,
-        reactions: { up: issue.reactions?.['+1'] ?? 0, down: issue.reactions?.['-1'] ?? 0 },
-      },
-      extra: { reporter },
-      chunks,
-    };
+    yield issueItem(issue, await issueComments(client, repo, issue, options.comments, raw), repo);
   }
+}
+
+export interface ReadIssueInput { client: PaginatingClient; repo: string; number: number; options: IssuesConfig; raw?: RawStore }
+
+/** One issue by number, or null when it is a pull request or its state is not configured. */
+export async function readIssue({ client, repo, number, options, raw }: ReadIssueInput): Promise<IndexItem | null> {
+  if (!client.getJson) throw new Error('readIssue needs a client with getJson');
+  const issue = await client.getJson<ApiIssue>(`/repos/${repo}/issues/${number}`);
+  if (issue.pull_request || !options.states.includes(issue.state)) return null;
+  return issueItem(issue, await issueComments(client, repo, issue, options.comments, raw), repo);
 }
