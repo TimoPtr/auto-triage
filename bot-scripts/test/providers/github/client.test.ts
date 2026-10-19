@@ -78,3 +78,43 @@ test('an exhausted rate limit waits until reset, capped at the maximum wait', as
   assert.equal(calls, 2);
   assert.deepEqual(sleeps, [15 * 60 * 1000]);
 });
+
+test('retries a transient network error with backoff', async () => {
+  let calls = 0;
+  const fetchImpl = async () => {
+    calls += 1;
+    if (calls < 3) throw new TypeError('fetch failed');
+    return new Response('{"ok":true}', { status: 200, headers: { 'content-type': 'application/json' } });
+  };
+  const sleeps = [];
+  const client = createGitHubClient({ token: 't', fetchImpl, sleepImpl: async (ms) => { sleeps.push(ms); } });
+  assert.deepEqual(await client.getJson('/x'), { ok: true });
+  assert.deepEqual(sleeps, [1000, 2000]);
+});
+
+test('gives up after the retry budget on a 502', async () => {
+  let calls = 0;
+  const fetchImpl = async () => { calls += 1; return new Response('bad gateway', { status: 502 }); };
+  const client = createGitHubClient({ token: 't', fetchImpl, sleepImpl: async () => {} });
+  await assert.rejects(() => client.getJson('/x'), /502/);
+  assert.equal(calls, 4);
+});
+
+test('graphql posts the query and unwraps data', async () => {
+  const log = [];
+  const fetchImpl = async (url, init) => {
+    log.push({ url: String(url), body: JSON.parse(String(init.body)) });
+    return Response.json({ data: { repository: { discussions: { totalCount: 3 } } } });
+  };
+  const client = createGitHubClient({ token: 't', fetchImpl });
+  const data = await client.graphql('query($n: Int!) { repository { discussions(first: $n) { totalCount } } }', { n: 1 });
+  assert.deepEqual(data, { repository: { discussions: { totalCount: 3 } } });
+  assert.equal(log[0].url, 'https://api.github.com/graphql');
+  assert.deepEqual(log[0].body.variables, { n: 1 });
+});
+
+test('graphql throws the first error message', async () => {
+  const fetchImpl = async () => Response.json({ data: null, errors: [{ message: 'Could not resolve to a Repository' }] });
+  const client = createGitHubClient({ token: 't', fetchImpl });
+  await assert.rejects(() => client.graphql('{ x }'), /Could not resolve/);
+});
