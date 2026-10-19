@@ -1,6 +1,9 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { openRawStore } from '../../../src/store/raw.ts';
 import { readIssues } from '../../../src/providers/github/issues.ts';
 import type { IssuesConfig } from '../../../src/config/types.ts';
 
@@ -17,6 +20,9 @@ function fakeClient(log = []) {
     },
   };
 }
+
+const tmp = mkdtempSync(join(tmpdir(), 'kb-issues-'));
+test.after(() => rmSync(tmp, { recursive: true, force: true }));
 
 const options: IssuesConfig = { states: ['open', 'closed'], closedWithinDays: 730, comments: true };
 const now = new Date('2026-10-15T00:00:00Z');
@@ -115,4 +121,35 @@ test('without closedWithinDays every closed issue is listed and kept', async () 
   const closedListing = log.find((c) => c.params?.state === 'closed');
   assert.equal(closedListing.params.since, undefined);
   assert.ok(items.some((i) => i.sourceId === '7'), 'the 2022 closed issue is indexed');
+});
+
+test('records each issue with its comments in the raw store', async () => {
+  const raw = openRawStore(join(tmp, 'raw-record.sqlite'));
+  await collect(readIssues({ client: fakeClient(), repo: 'o/r', options, now, raw }));
+  const record = raw.get<any>('github', 'o/r', 'issue', '12');
+  assert.equal(record.updatedAt, page.find((i) => i.number === 12).updated_at);
+  assert.equal(record.payload.issue.number, 12);
+  assert.equal(record.payload.comments.length, comments.length);
+  assert.equal(raw.get<any>('github', 'o/r', 'issue', '20').payload.comments.length, 0);
+  raw.close();
+});
+
+test('reuses stored comments when the issue has not changed since', async () => {
+  const raw = openRawStore(join(tmp, 'raw-reuse.sqlite'));
+  await collect(readIssues({ client: fakeClient(), repo: 'o/r', options, now, raw }));
+  const log = [];
+  const items = await collect(readIssues({ client: fakeClient(log), repo: 'o/r', options, now, raw }));
+  assert.ok(log.every((c) => !c.path.endsWith('/comments')), 'no comments request on the second pass');
+  const issue = items.find((i) => i.sourceId === '12');
+  assert.equal(issue.chunks.filter((c) => c.kind === 'comment').length, comments.length);
+  raw.close();
+});
+
+test('fetches comments again when the issue was updated', async () => {
+  const raw = openRawStore(join(tmp, 'raw-stale.sqlite'));
+  raw.put({ provider: 'github', origin: 'o/r', kind: 'issue', id: '12', updatedAt: '2000-01-01T00:00:00Z', payload: { issue: {}, comments: [] } });
+  const log = [];
+  await collect(readIssues({ client: fakeClient(log), repo: 'o/r', options, now, raw }));
+  assert.ok(log.some((c) => c.path === '/repos/o/r/issues/12/comments'));
+  raw.close();
 });

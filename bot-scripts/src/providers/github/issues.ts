@@ -2,6 +2,7 @@ import { cleanIssueText } from '../../text/clean.ts';
 import { packText } from '../../text/chunk.ts';
 import type { IssuesConfig } from '../../config/types.ts';
 import type { AuthorRole, IndexChunk, IndexItem, PaginatingClient } from '../types.ts';
+import type { RawStore } from '../../store/raw.ts';
 
 const MAINTAINER_ASSOCIATIONS = new Set(['OWNER', 'MEMBER', 'COLLABORATOR']);
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -57,18 +58,31 @@ function commentChunks(comment: ApiComment, firstSeq: number, reporterLogin: str
   }));
 }
 
+/** Comments of one issue: from the raw store when the issue did not change, else fetched and recorded. */
+async function issueComments(client: PaginatingClient, repo: string, issue: ApiIssue, wanted: boolean, raw?: RawStore): Promise<ApiComment[]> {
+  const stored = raw?.get('github', repo, 'issue', String(issue.number));
+  if (stored && stored.updatedAt === issue.updated_at) return (stored.payload as { comments: ApiComment[] }).comments;
+  const comments: ApiComment[] = [];
+  if (wanted && issue.comments > 0) {
+    for await (const comment of client.paginate(`/repos/${repo}/issues/${issue.number}/comments`, { per_page: 100 })) comments.push(comment as ApiComment);
+  }
+  raw?.put({ provider: 'github', origin: repo, kind: 'issue', id: String(issue.number), updatedAt: issue.updated_at, payload: { issue, comments } });
+  return comments;
+}
+
 export interface ReadIssuesInput {
   client: PaginatingClient;
   repo: string;
   options: IssuesConfig;
   now?: Date;
+  raw?: RawStore;
 }
 
 /**
  * Reads the issues of one repository as index items: body chunks per issue,
  * chunks per comment, and the outcome fields the renderer shows.
  */
-export async function* readIssues({ client, repo, options, now = new Date() }: ReadIssuesInput): AsyncGenerator<IndexItem> {
+export async function* readIssues({ client, repo, options, now = new Date(), raw }: ReadIssuesInput): AsyncGenerator<IndexItem> {
   const cutoff = options.closedWithinDays === undefined ? null : new Date(now.getTime() - options.closedWithinDays * DAY_MS);
   const wanted = new Set(options.states);
   const listing = { per_page: 100, sort: 'updated', direction: 'asc' };
@@ -79,8 +93,8 @@ export async function* readIssues({ client, repo, options, now = new Date() }: R
     ...(wanted.has('closed') ? [{ state: 'closed', ...(cutoff ? { since: cutoff.toISOString() } : {}), ...listing }] : []),
   ];
 
-  for (const params of listings) for await (const raw of client.paginate(`/repos/${repo}/issues`, params)) {
-    const issue = raw as ApiIssue;
+  for (const params of listings) for await (const element of client.paginate(`/repos/${repo}/issues`, params)) {
+    const issue = element as ApiIssue;
     if (issue.pull_request) continue;
     if (!wanted.has(issue.state)) continue;
     if (cutoff && issue.state === 'closed' && issue.closed_at && new Date(issue.closed_at) < cutoff) continue;
@@ -93,10 +107,8 @@ export async function* readIssues({ client, repo, options, now = new Date() }: R
       chunks.push({ seq: chunks.length, kind: 'body', text: piece, logs: chunks.length === 0 ? logs : null, createdAt: issue.created_at, authorRole: 'reporter' });
     }
 
-    if (options.comments && issue.comments > 0) {
-      for await (const comment of client.paginate(`/repos/${repo}/issues/${issue.number}/comments`, { per_page: 100 })) {
-        chunks.push(...commentChunks(comment as ApiComment, chunks.length, reporter));
-      }
+    for (const comment of await issueComments(client, repo, issue, options.comments, raw)) {
+      chunks.push(...commentChunks(comment, chunks.length, reporter));
     }
 
     yield {
