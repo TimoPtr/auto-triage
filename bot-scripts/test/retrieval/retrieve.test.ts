@@ -131,3 +131,12 @@ test('retrieve finds a log tag given a whole issue body', async () => {
   db.close();
   assert.equal(results[0].sourceId, '1');
 });
+
+test('reports the best similarity of the item, not only of the chunk that won the fusion', async () => {
+  const db = openDatabase(indexPath, { readOnly: true });
+  const results = await retrieve(db, embedder, 'widget stops', { k: 10 });
+  db.close();
+  for (const r of results) {
+    if (r.scores.similarity !== null) assert.ok(r.scores.itemSimilarity >= r.scores.similarity);
+  }
+});

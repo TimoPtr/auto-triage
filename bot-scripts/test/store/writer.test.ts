@@ -100,3 +100,19 @@ test('chunkHash changes with text and kind only', () => {
   assert.notEqual(a, chunkHash({ kind: 'comment', heading: null, text: 'x', logs: null }));
   assert.notEqual(a, chunkHash({ kind: 'body', heading: null, text: 'y', logs: null }));
 });
+
+test('ignores a previous index with another dimension and logs it', async () => {
+  const previous = join(tmp, 'prev-dim.sqlite');
+  await writeIndex({ items: of(item('1', 'widget stops')), embedder: { ...fakeEmbedder(), dimensions: 8, async embed(t) { return t.map(() => new Float32Array(8)); } }, outPath: previous, meta: {} });
+  const lines = [];
+  const stats = await writeIndex({ items: of(item('1', 'widget stops')), embedder: fakeEmbedder(), outPath: join(tmp, 'f.sqlite'), previousPath: previous, meta: {}, log: (l) => lines.push(l) });
+  assert.equal(stats.reused, 0);
+  assert.ok(lines.some((l) => /previous index/.test(l)));
+});
+
+test('ignores an unreadable previous index', async () => {
+  const bogus = join(tmp, 'bogus.sqlite');
+  (await import('node:fs')).writeFileSync(bogus, 'not a database');
+  const stats = await writeIndex({ items: of(item('1', 'widget stops')), embedder: fakeEmbedder(), outPath: join(tmp, 'g.sqlite'), previousPath: bogus, meta: {} });
+  assert.equal(stats.reused, 0);
+});

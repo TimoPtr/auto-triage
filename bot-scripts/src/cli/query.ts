@@ -19,7 +19,7 @@ export function formatResults(results: RetrievalResults, { json }: { json: boole
     lines.push(`${r.rank}. [${r.source}] ${title}${meta ? ` (${meta})` : ''}`);
     lines.push(`   ${r.url}`);
     const lexical = r.scores.lexical === null ? 'none' : r.scores.lexical.toFixed(2);
-    const similarity = r.scores.similarity === null ? 'none' : r.scores.similarity.toFixed(2);
+    const similarity = r.scores.itemSimilarity === null ? 'none' : r.scores.itemSimilarity.toFixed(2);
     lines.push(`   similarity ${similarity} · lexical ${lexical} · fused ${r.scores.fused.toFixed(4)}`);
     lines.push(`   ${r.text.replace(/\s+/g, ' ').slice(0, 240)}`);
     lines.push('');

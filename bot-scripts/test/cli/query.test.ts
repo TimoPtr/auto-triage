@@ -4,8 +4,8 @@ import { formatResults } from '../../src/cli/query.ts';
 import type { RetrievalResults } from '../../src/retrieval/retrieve.ts';
 
 const results = Object.assign([
-  { rank: 1, source: 'issue', title: 'Widget stops', url: 'https://x/1', createdAt: '2025-03-01T00:00:00Z', heading: null, text: 'Widget stops after reboot', scores: { similarity: 0.91, lexical: 3.2, fused: 0.031 }, outcome: { state: 'closed', stateReason: 'completed' } },
-  { rank: 2, source: 'docs', title: 'Android Widgets', url: 'https://x/docs', createdAt: '1970-01-01T00:00:00Z', heading: 'Refresh', text: 'Widgets refresh on tap', scores: { similarity: 0.8, lexical: null, fused: 0.02 }, outcome: null },
+  { rank: 1, source: 'issue', title: 'Widget stops', url: 'https://x/1', createdAt: '2025-03-01T00:00:00Z', heading: null, text: 'Widget stops after reboot', scores: { similarity: 0.85, itemSimilarity: 0.91, lexical: 3.2, fused: 0.031 }, outcome: { state: 'closed', stateReason: 'completed' } },
+  { rank: 2, source: 'docs', title: 'Android Widgets', url: 'https://x/docs', createdAt: '1970-01-01T00:00:00Z', heading: 'Refresh', text: 'Widgets refresh on tap', scores: { similarity: 0.8, itemSimilarity: 0.8, lexical: null, fused: 0.02 }, outcome: null },
 ], { bestSimilarity: 0.91 }) as unknown as RetrievalResults;
 
 test('formats a readable block per result', () => {

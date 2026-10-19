@@ -26,7 +26,8 @@ export interface RetrievalResult {
   audience: string;
   authorRole: string | null;
   outcome: Record<string, unknown> | null;
-  scores: { similarity: number | null; lexical: number | null; fused: number };
+  /** `similarity` is the winning chunk's cosine; `itemSimilarity` the best cosine among all dense candidates of the item. */
+  scores: { similarity: number | null; itemSimilarity: number | null; lexical: number | null; fused: number };
   rank: number;
 }
 
@@ -128,7 +129,10 @@ export async function retrieve(db: DatabaseSync, embedder: Embedder, question: s
   if (fused.size === 0) return Object.assign([], { bestSimilarity });
 
   const best = new Map<number, RetrievalResult>();
+  const itemSimilarity = new Map<number, number>();
   for (const row of loadChunks(db, Array.from(fused.keys()))) {
+    const chunkSimilarity = similarity.get(row.chunk_id);
+    if (chunkSimilarity !== undefined) itemSimilarity.set(row.item_id, Math.max(chunkSimilarity, itemSimilarity.get(row.item_id) ?? -1));
     const ageDays = (now.getTime() - Date.parse(row.created_at)) / DAY_MS;
     const decay = DATED_SOURCES.has(row.source) && ageDays > decayAfterDays ? decayFactor : 1;
     const score = (fused.get(row.chunk_id) ?? 0) * (sourceWeights[row.source] ?? 1) * decay;
@@ -139,12 +143,12 @@ export async function retrieve(db: DatabaseSync, embedder: Embedder, question: s
         sourceId: row.source_id, url: row.url, title: row.title, heading: row.heading, anchor: row.anchor, text: row.text,
         createdAt: row.created_at, audience: row.audience, authorRole: row.author_role ?? null,
         outcome: row.outcome ? (JSON.parse(row.outcome) as Record<string, unknown>) : null,
-        scores: { similarity: similarity.get(row.chunk_id) ?? null, lexical: lexical.get(row.chunk_id) ?? null, fused: score },
+        scores: { similarity: similarity.get(row.chunk_id) ?? null, itemSimilarity: null, lexical: lexical.get(row.chunk_id) ?? null, fused: score },
         rank: 0,
       });
     }
   }
   const results = Array.from(best.values()).sort((a, b) => b.scores.fused - a.scores.fused).slice(0, k)
-    .map((r, i) => ({ ...r, rank: i + 1 }));
+    .map((r, i) => ({ ...r, rank: i + 1, scores: { ...r.scores, itemSimilarity: itemSimilarity.get(r.itemId) ?? null } }));
   return Object.assign(results, { bestSimilarity });
 }

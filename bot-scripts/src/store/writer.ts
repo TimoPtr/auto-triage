@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto';
 import { existsSync, renameSync, rmSync } from 'node:fs';
 import type { DatabaseSync } from 'node:sqlite';
-import { openDatabase, createSchema, readMeta } from './db.ts';
+import { openDatabase, createSchema, readMeta, SCHEMA_VERSION } from './db.ts';
 import { quantizeInt8, toBlob } from './vectors.ts';
 import type { Embedder } from '../embed/embedder.ts';
 import type { IndexChunk, IndexItem } from '../providers/types.ts';
@@ -34,15 +34,42 @@ export function chunkHash(chunk: Pick<IndexChunk, 'kind' | 'heading' | 'text' | 
     .digest('hex');
 }
 
-/** Loads hash -> vector blob from a previous index built with the same model. */
-function loadPreviousVectors(previousPath: string | undefined, modelKey: string): Map<string, Uint8Array> {
+/** Why a previous index cannot lend its vectors, or null when it can. */
+function reuseBlocker(meta: Record<string, string>, embedder: Embedder): string | null {
+  const reasons = [
+    meta.schema_version !== String(SCHEMA_VERSION) ? `schema ${meta.schema_version}` : null,
+    meta.dimensions !== String(embedder.dimensions) ? `dimensions ${meta.dimensions}` : null,
+    meta.model_key !== embedder.modelKey ? `model ${meta.model_key}` : null,
+  ].filter(Boolean);
+  return reasons.length ? reasons.join(', ') : null;
+}
+
+/**
+ * Loads hash -> vector blob from a previous index. A previous index that cannot
+ * be opened or was built with another schema, dimension or model lends nothing
+ * and is logged: the build then embeds everything instead of failing.
+ */
+function loadPreviousVectors(previousPath: string | undefined, embedder: Embedder, log: (line: string) => void): Map<string, Uint8Array> {
   const vectors = new Map<string, Uint8Array>();
   if (!previousPath || !existsSync(previousPath)) return vectors;
-  const db = openDatabase(previousPath, { readOnly: true });
+  let db: DatabaseSync;
   try {
-    if (readMeta(db).model_key !== modelKey) return vectors;
+    db = openDatabase(previousPath, { readOnly: true });
+  } catch (error) {
+    log(`previous index unusable (${error instanceof Error ? error.message : String(error)}); embedding everything`);
+    return vectors;
+  }
+  try {
+    const blocker = reuseBlocker(readMeta(db), embedder);
+    if (blocker) {
+      log(`previous index not reused (${blocker}); embedding everything`);
+      return vectors;
+    }
     const rows = db.prepare('SELECT c.hash, v.embedding FROM chunks c JOIN vec_chunks v ON v.chunk_id = c.id').all() as { hash: string; embedding: Uint8Array }[];
     for (const row of rows) vectors.set(row.hash, row.embedding);
+  } catch (error) {
+    log(`previous index unusable (${error instanceof Error ? error.message : String(error)}); embedding everything`);
+    vectors.clear();
   } finally {
     db.close();
   }
@@ -80,7 +107,7 @@ function insertChunk(stmt: Statements, itemId: number | bigint, chunk: IndexChun
 export async function writeIndex({ items, embedder, outPath, previousPath, meta = {}, log = () => {} }: WriteIndexInput): Promise<WriteStats> {
   const tmpPath = `${outPath}.tmp`;
   rmSync(tmpPath, { force: true });
-  const previous = loadPreviousVectors(previousPath, embedder.modelKey);
+  const previous = loadPreviousVectors(previousPath, embedder, log);
   const db = openDatabase(tmpPath);
   const stats: WriteStats = { items: 0, chunks: 0, embedded: 0, reused: 0 };
   let pending: { chunkId: bigint; text: string }[] = [];
