@@ -1,0 +1,43 @@
+---
+name: Check knowledge bot config
+
+on:  # yamllint disable-line rule:truthy
+  workflow_call:
+    inputs:
+      config:
+        description: Path of the consumer config.
+        type: string
+        default: .github/knowledge-bot.yaml
+
+permissions: {}
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - id: self
+        env:
+          JOB_WORKFLOW_REF: ${{ github.job_workflow_ref }}
+        run: |
+          set -euo pipefail
+          echo "repo=${JOB_WORKFLOW_REF%%/.github/*}" >> "$GITHUB_OUTPUT"
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: ${{ steps.self.outputs.repo }}
+          ref: ${{ github.job_workflow_sha }}
+          path: .knowledge-bot/auto-triage
+          persist-credentials: false
+      - uses: ./.knowledge-bot/auto-triage/actions/setup-bot
+        with:
+          config: ${{ inputs.config }}
+      - env:
+          CONFIG: ${{ inputs.config }}
+        run: |
+          set -euo pipefail
+          node "$BOT_SCRIPTS_DIR/src/cli/validate-config.ts" --config "$CONFIG" | tee -a "$GITHUB_STEP_SUMMARY"

@@ -1,0 +1,81 @@
+---
+name: Append to knowledge index
+
+on:  # yamllint disable-line rule:truthy
+  workflow_call:
+    inputs:
+      slug:
+        description: Product slug; prefix of the cache keys and artifact names.
+        type: string
+        required: true
+      config:
+        description: Path of the consumer config.
+        type: string
+        default: .github/knowledge-bot.yaml
+      item:
+        description: issue:<n> or pull:<n>
+        type: string
+        required: true
+
+permissions: {}
+
+jobs:
+  append:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    concurrency:
+      group: knowledge-index-${{ inputs.slug }}
+      cancel-in-progress: false
+    permissions:
+      contents: read
+      actions: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - id: self
+        env:
+          JOB_WORKFLOW_REF: ${{ github.job_workflow_ref }}
+        run: |
+          set -euo pipefail
+          echo "repo=${JOB_WORKFLOW_REF%%/.github/*}" >> "$GITHUB_OUTPUT"
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: ${{ steps.self.outputs.repo }}
+          ref: ${{ github.job_workflow_sha }}
+          path: .knowledge-bot/auto-triage
+          persist-credentials: false
+      - uses: ./.knowledge-bot/auto-triage/actions/setup-bot
+        with:
+          config: ${{ inputs.config }}
+      - id: index
+        uses: ./.knowledge-bot/auto-triage/actions/restore-index
+        with:
+          slug: ${{ inputs.slug }}
+          config: ${{ inputs.config }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+      - if: steps.index.outputs.usable != 'true'
+        env:
+          STATUS: ${{ steps.index.outputs.status }}
+        run: echo "No usable index ($STATUS); nothing to append to. The next build will include this item." >> "$GITHUB_STEP_SUMMARY"
+      - id: append
+        if: steps.index.outputs.usable == 'true'
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          CONFIG: ${{ inputs.config }}
+          INDEX: ${{ steps.index.outputs.index-path }}
+          RAW: ${{ steps.index.outputs.raw-path }}
+          ITEM: ${{ inputs.item }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          node "$BOT_SCRIPTS_DIR/src/cli/append.ts" --config "$CONFIG" --index "$INDEX" --raw "$RAW" \
+            --model-cache "$KB_MODEL_CACHE" --repo "$REPO" --item "$ITEM" | tee -a "$GITHUB_STEP_SUMMARY"
+      - if: steps.index.outputs.usable == 'true'
+        uses: ./.knowledge-bot/auto-triage/actions/publish-index
+        with:
+          slug: ${{ inputs.slug }}
+          config: ${{ inputs.config }}
+          index-path: ${{ steps.index.outputs.index-path }}
+          raw-path: ${{ steps.index.outputs.raw-path }}
