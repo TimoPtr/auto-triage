@@ -60,6 +60,32 @@ Under `providers.github.<owner/repo>`:
 
 Under `providers.discourse.<host>`: the topics of the named categories (slug or id), optionally filtered by tag, with the accepted answer; throttled to `requestsPerSecond`.
 
+### Build time
+
+Measured on 2026-10-19 for the android config above (every issue since 2019, every closed pull
+request, three discussion categories, stable releases, two docs sites, the Kotlin sources, two
+string files, the agent skills and the whole Android forum category), on an Apple M4 Pro with
+Node 26, a 1 Gbit/s connection and the vectors of a previous issues-and-docs index to reuse:
+
+| Stage | Items | Wall time |
+|---|---|---|
+| GitHub sources (issues, pull requests, discussions, releases, docs, code, files) | 7367 | 24.6 min |
+| Forum (Discourse, 4 requests per second) | 1847 | 9.7 min |
+| Whole build, embedding included | 9214 items, 41440 chunks (18685 embedded, 22755 reused) | 34.3 min |
+
+The resulting index is 91 MB and the raw store 43 MB (7974 records). This 34 minute pass started
+from a raw store that already held every issue and 2084 of the pull requests, fetched by an earlier
+pass that ran for 65 minutes before GitHub's primary rate limit stopped it. A first fill from
+nothing therefore costs about 11 000 REST requests (one listing page per 100 items, one comments
+request per issue, one review-comments and one files request per pull request), which is more
+than the 5000 requests per hour of a user token: the client now waits out the window boundary,
+so expect about two hours for the very first android build. Every later build reuses the raw
+store (no comment, review or topic request for an unchanged item) and the previous vectors, and
+takes the time of the listings plus the changed items.
+
+The Actions `GITHUB_TOKEN` only has 1000 requests per hour, so the first fill of a consumer is a
+local build uploaded once; the nightly job stays incremental.
+
 ### Raw store
 
 With `--raw`, every fetched payload is kept verbatim (gzip JSON per item) in a second SQLite file
