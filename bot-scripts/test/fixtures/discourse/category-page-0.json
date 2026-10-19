@@ -1,0 +1,4 @@
+{ "topic_list": { "more_topics_url": "/c/mobile-apps/android-companion/42?page=1", "topics": [
+  { "id": 100, "title": "Widget not updating", "slug": "widget-not-updating", "posts_count": 3, "views": 120, "like_count": 2, "created_at": "2026-03-01T00:00:00Z", "last_posted_at": "2026-03-05T00:00:00Z", "closed": false, "has_accepted_answer": true, "tags": ["android"] },
+  { "id": 101, "title": "iPhone question in the wrong place", "slug": "iphone", "posts_count": 1, "views": 5, "like_count": 0, "created_at": "2026-02-01T00:00:00Z", "last_posted_at": "2026-02-01T00:00:00Z", "closed": false, "has_accepted_answer": false, "tags": ["ios"] }
+] } }

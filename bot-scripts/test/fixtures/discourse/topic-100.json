@@ -1,0 +1,6 @@
+{ "id": 100, "title": "Widget not updating", "posts_count": 3, "views": 120, "like_count": 2, "created_at": "2026-03-01T00:00:00Z", "closed": false, "tags": ["android"],
+  "accepted_answer": { "post_number": 2 },
+  "post_stream": { "posts": [
+    { "post_number": 1, "cooked": "<p>My <strong>widget</strong> stops &amp; never refreshes.</p><p>Android 15.</p>", "created_at": "2026-03-01T00:00:00Z", "username": "asker" },
+    { "post_number": 2, "cooked": "<p>Disable battery optimisation for the app.</p>", "created_at": "2026-03-02T00:00:00Z", "username": "helper", "accepted_answer": true }
+  ] } }
