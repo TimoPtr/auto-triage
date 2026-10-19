@@ -1,0 +1,48 @@
+---
+name: Set up the knowledge bot scripts
+description: Installs bot-scripts next to this action with Node 24 and restores the embedding model cache.
+inputs:
+  config:
+    description: Consumer config path, hashed into the model cache key.
+    default: .github/knowledge-bot.yaml
+  model-cache:
+    description: Directory of the embedding model cache.
+    default: .knowledge-bot/model-cache
+outputs:
+  bot-scripts-dir:
+    description: Absolute path of the installed bot-scripts.
+    value: ${{ steps.locate.outputs.dir }}
+  model-cache:
+    description: The model cache directory.
+    value: ${{ inputs.model-cache }}
+runs:
+  using: composite
+  steps:
+    - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+      with:
+        node-version: 24
+    - id: locate
+      shell: bash
+      env:
+        ACTION_PATH: ${{ github.action_path }}
+        MODEL_CACHE: ${{ inputs.model-cache }}
+      run: |
+        set -euo pipefail
+        dir="$(cd "$ACTION_PATH/../../bot-scripts" && pwd)"
+        echo "dir=$dir" >> "$GITHUB_OUTPUT"
+        echo "BOT_SCRIPTS_DIR=$dir" >> "$GITHUB_ENV"
+        echo "KB_MODEL_CACHE=$MODEL_CACHE" >> "$GITHUB_ENV"
+        mkdir -p "$MODEL_CACHE"
+    - shell: bash
+      env:
+        DIR: ${{ steps.locate.outputs.dir }}
+      run: |
+        set -euo pipefail
+        cd "$DIR"
+        npm ci --ignore-scripts --omit=dev
+    - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      with:
+        path: ${{ inputs.model-cache }}
+        key: knowledge-bot-model-${{ hashFiles(inputs.config) }}
+        restore-keys: |
+          knowledge-bot-model-
