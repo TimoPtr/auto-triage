@@ -110,3 +110,24 @@ test('the floor is off by default', async () => {
   db.close();
   assert.ok(results.some((r) => r.sourceId === '2'), 'an orthogonal item is still a candidate without a floor');
 });
+
+test('prepareQuestion strips template noise and lifts logs into the lexical text', async () => {
+  const { prepareQuestion } = await import('../../src/retrieval/retrieve.ts');
+  const body = '**Description of problem:**\nWidget stops.\n\n```\n03-01 09:59:01 E/EntityWidget: refresh failed\n```';
+  const q = prepareQuestion(body);
+  assert.equal(q.embedText, 'Widget stops.');
+  assert.ok(q.lexicalText.includes('E/EntityWidget'));
+});
+
+test('a question that cleans to nothing is embedded as written', async () => {
+  const { prepareQuestion } = await import('../../src/retrieval/retrieve.ts');
+  assert.equal(prepareQuestion('<!-- only a comment -->').embedText, '<!-- only a comment -->');
+});
+
+test('retrieve finds a log tag given a whole issue body', async () => {
+  const db = openDatabase(indexPath, { readOnly: true });
+  const body = '**Companion App Logs:**\n\n```\nE/EntityWidget: refresh failed\n```';
+  const results = await retrieve(db, embedder, body, { k: 3 });
+  db.close();
+  assert.equal(results[0].sourceId, '1');
+});

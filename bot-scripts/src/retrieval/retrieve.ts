@@ -1,6 +1,7 @@
 import type { DatabaseSync } from 'node:sqlite';
 import { quantizeInt8, toBlob, cosineFromL2 } from '../store/vectors.ts';
 import { readMeta } from '../store/db.ts';
+import { cleanIssueText } from '../text/clean.ts';
 import { toFtsQuery } from './fts.ts';
 import { fuse, type RankedList } from './rrf.ts';
 import type { Embedder } from '../embed/embedder.ts';
@@ -85,6 +86,18 @@ function loadChunks(db: DatabaseSync, ids: number[]): ChunkRow[] {
 }
 
 /**
+ * Cleans a question like an issue body: template noise goes, logs are lifted
+ * into the lexical text so error strings reach FTS5. A question that cleans
+ * to nothing is used as written.
+ */
+export function prepareQuestion(question: string): { embedText: string; lexicalText: string } {
+  const { text, logs } = cleanIssueText(question);
+  const embedText = text || question;
+  const lexicalText = [text, logs].filter(Boolean).join('\n') || question;
+  return { embedText, lexicalText };
+}
+
+/**
  * Hybrid retrieval: vector KNN and FTS5 fused with reciprocal rank fusion,
  * weighted per source, decayed by age, collapsed to the best chunk per item.
  */
@@ -96,19 +109,20 @@ export async function retrieve(db: DatabaseSync, embedder: Embedder, question: s
   }
   const { where, params } = filters(options);
 
-  const [vector] = await embedder.embed([question]);
+  const { embedText, lexicalText } = prepareQuestion(question);
+  const [vector] = await embedder.embed([embedText]);
   const knn = denseCandidates(db, vector, candidates, where, params);
   // the gate reads the real best hit; the floor only decides what reaches the fusion
   const bestSimilarity = knn.length ? cosineFromL2(knn[0].distance) : 0;
   const dense = knn.filter((r) => cosineFromL2(r.distance) >= minSimilarity).slice(0, candidates);
   const similarity = new Map(dense.map((r) => [Number(r.chunk_id), cosineFromL2(r.distance)]));
 
-  const lexicalRows = lexicalCandidates(db, question, candidates, where, params);
+  const lexicalRows = lexicalCandidates(db, lexicalText, candidates, where, params);
   const lexical = new Map(lexicalRows.map((r) => [Number(r.id), -r.score]));
 
   const fused = fuse([
-    { weight: 1, ids: dense.map((r) => r.chunk_id) },
-    { weight: 1, ids: lexicalRows.map((r) => r.id) },
+    { weight: 1, ids: dense.map((r) => r.chunk_id), scores: dense.map((r) => r.distance) },
+    { weight: 1, ids: lexicalRows.map((r) => r.id), scores: lexicalRows.map((r) => r.score) },
     ...liveLists,
   ]);
   if (fused.size === 0) return Object.assign([], { bestSimilarity });

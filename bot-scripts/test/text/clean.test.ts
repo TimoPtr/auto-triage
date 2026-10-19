@@ -42,3 +42,10 @@ test('a huge single-token block does not stall the log detector', () => {
   assert.ok(performance.now() - started < 500, 'took too long');
   assert.equal(logs, null);
 });
+
+test('a long run of blank lines inside a fence does not stall the detector', () => {
+  const body = '```\nx' + '\n'.repeat(60_000) + 'y\n```';
+  const started = performance.now();
+  cleanIssueText(body);
+  assert.ok(performance.now() - started < 300, 'took too long');
+});
