@@ -1,0 +1,53 @@
+---
+name: Report the knowledge index status
+description: Writes the index status to the job summary and keeps one tracking issue open while the index is stale, unusable or missing.
+inputs:
+  slug:
+    description: Product slug.
+    required: true
+  status:
+    description: fresh, stale, unusable or missing.
+    required: true
+  source:
+    description: cache, artifact, build or none.
+    default: ''
+  age-days:
+    description: Index age in days.
+    default: ''
+  reason:
+    description: Why the index is unusable.
+    default: ''
+  tracking:
+    description: Maintain the tracking issue. Needs GH_TOKEN with issues write.
+    default: 'true'
+runs:
+  using: composite
+  steps:
+    - shell: bash
+      env:
+        SLUG: ${{ inputs.slug }}
+        STATUS: ${{ inputs.status }}
+        SOURCE: ${{ inputs.source }}
+        AGE: ${{ inputs.age-days }}
+        REASON: ${{ inputs.reason }}
+        TRACKING: ${{ inputs.tracking }}
+      run: |
+        set -euo pipefail
+        echo "Knowledge index $SLUG: $STATUS (source ${SOURCE:-none}, age ${AGE:-?} days${REASON:+, $REASON})" >> "$GITHUB_STEP_SUMMARY"
+        [ "$TRACKING" = "true" ] || exit 0
+        title_prefix="Knowledge index $SLUG:"
+        existing="$(gh issue list --repo "$GITHUB_REPOSITORY" --label knowledge-bot --state open \
+          --search "\"$title_prefix\" in:title" --json number --jq '.[0].number // empty')"
+        body="Status: $STATUS. Source: ${SOURCE:-none}. Age: ${AGE:-unknown} days. ${REASON:+Reason: $REASON. }Run: $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
+        if [ "$STATUS" = "fresh" ]; then
+          if [ -n "$existing" ]; then
+            gh issue close --repo "$GITHUB_REPOSITORY" "$existing" --comment "The index is fresh again. $body"
+          fi
+          exit 0
+        fi
+        gh label create knowledge-bot --repo "$GITHUB_REPOSITORY" --description "Knowledge bot health" --color 5319e7 2>/dev/null || true
+        if [ -n "$existing" ]; then
+          gh issue comment --repo "$GITHUB_REPOSITORY" "$existing" --body "$body"
+        else
+          gh issue create --repo "$GITHUB_REPOSITORY" --title "$title_prefix $STATUS" --label knowledge-bot --body "$body"
+        fi
