@@ -1,0 +1,61 @@
+---
+name: Pipeline self-test
+
+on:  # yamllint disable-line rule:truthy
+  pull_request:
+  push:
+    branches: [main]
+
+permissions: {}
+
+jobs:
+  config:
+    uses: ./.github/workflows/selfcheck.yml
+    permissions:
+      contents: read
+    with:
+      config: examples/selfcheck/knowledge-bot.yaml
+  build:
+    uses: ./.github/workflows/build-index.yml
+    permissions:
+      contents: read
+      actions: read
+      issues: write
+    with:
+      slug: selfcheck
+      config: examples/selfcheck/knowledge-bot.yaml
+      timeout-minutes: 30
+      tracking: false
+  verify:
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      actions: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: ./actions/setup-bot
+        with:
+          config: examples/selfcheck/knowledge-bot.yaml
+      - id: index
+        uses: ./actions/restore-index
+        with:
+          slug: selfcheck
+          config: examples/selfcheck/knowledge-bot.yaml
+        env:
+          GH_TOKEN: ${{ github.token }}
+      - env:
+          STATUS: ${{ steps.index.outputs.status }}
+          SOURCE: ${{ steps.index.outputs.source }}
+          INDEX: ${{ steps.index.outputs.index-path }}
+        run: |
+          set -euo pipefail
+          [ "$STATUS" = "fresh" ] || { echo "expected a fresh index, got $STATUS" >&2; exit 1; }
+          [ "$SOURCE" = "cache" ] || [ "$SOURCE" = "artifact" ] || { echo "unexpected source $SOURCE" >&2; exit 1; }
+          out="$(node "$BOT_SCRIPTS_DIR/src/cli/query.ts" --config examples/selfcheck/knowledge-bot.yaml --index "$INDEX" \
+            --model-cache "$KB_MODEL_CACHE" "raw source store for the benchmark")"
+          echo "$out" | head -20
+          echo "$out" | grep -q phase1b || { echo "query did not reach the plan docs" >&2; exit 1; }

@@ -1,0 +1,25 @@
+---
+# Self-test config: indexes this repository's own issues and docs.
+version: 1
+
+product:
+  name: Auto-triage self-check
+  slug: selfcheck
+
+providers:
+  github:
+    TimoPtr/auto-triage:
+      issues:
+        states: [open, closed]
+        comments: true
+      docs:
+        path: docs
+        baseUrl: https://github.com/TimoPtr/auto-triage/blob/main/docs/
+        audience: developer
+
+embedding:
+  model: Xenova/bge-small-en-v1.5
+  revision: ea104dacec62c0de699686887e3f920caeb4f3e3
+  dtype: q8
+  dimensions: 384
+  pooling: cls
