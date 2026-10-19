@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, rmSync } from 'node:fs';
+import { existsSync, mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
@@ -49,4 +49,18 @@ test('refuses a store written with another schema version', () => {
   db.exec("UPDATE meta SET value = '99' WHERE key = 'raw_schema_version'");
   db.close();
   assert.throws(() => openRawStore(path), /raw store schema 99/);
+});
+
+test('a store with another schema version is moved aside and recreated when asked', () => {
+  const path = join(tmp, 'raw-old.sqlite');
+  const db = new DatabaseSync(path);
+  db.exec("CREATE TABLE meta (key TEXT PRIMARY KEY, value TEXT NOT NULL); INSERT INTO meta VALUES ('raw_schema_version', '0')");
+  db.close();
+  assert.throws(() => openRawStore(path), /schema 0/);
+  const lines = [];
+  const store = openRawStore(path, { recreateOnMismatch: true, log: (line) => lines.push(line) });
+  assert.equal(store.count(), 0);
+  store.close();
+  assert.ok(existsSync(`${path}.schema-v0`), 'the old file is kept next to the new one');
+  assert.match(lines.join('\n'), /schema 0/);
 });

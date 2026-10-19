@@ -37,7 +37,7 @@ const raw = values.raw ? openRawStore(values.raw) : undefined;
 try {
   const result = await appendItem({ config, repo: values.repo, ref, indexPath: values.index, embedder, client, raw, log: (line) => console.log(line) });
   console.log(JSON.stringify(result));
-  writeOutputs({ action: result.action });
+  writeOutputs({ action: result.action, changed: result.changed });
 } catch (error) {
   console.error(error instanceof Error ? error.message : String(error));
   process.exit(1);

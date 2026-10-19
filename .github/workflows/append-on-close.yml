@@ -65,17 +65,18 @@ jobs:
           GITHUB_TOKEN: ${{ github.token }}
           CONFIG: ${{ inputs.config }}
           INDEX: ${{ steps.index.outputs.index-path }}
-          RAW: ${{ steps.index.outputs.raw-path }}
           ITEM: ${{ inputs.item }}
           REPO: ${{ github.repository }}
+        # No raw store here: the item just changed, so nothing of it could be reused, and a one-item
+        # store must never become the newest raw cache entry the nightly build restores.
         run: |
           set -euo pipefail
-          node "$BOT_SCRIPTS_DIR/src/cli/append.ts" --config "$CONFIG" --index "$INDEX" --raw "$RAW" \
+          node "$BOT_SCRIPTS_DIR/src/cli/append.ts" --config "$CONFIG" --index "$INDEX" \
             --model-cache "$KB_MODEL_CACHE" --repo "$REPO" --item "$ITEM" | tee -a "$GITHUB_STEP_SUMMARY"
-      - if: steps.index.outputs.usable == 'true'
+      # Only a changed index is worth a new cache entry and artifact; a bot pull request that was never indexed is not.
+      - if: steps.append.outputs.changed == 'true'
         uses: ./.knowledge-bot/auto-triage/actions/publish-index
         with:
           slug: ${{ inputs.slug }}
           config: ${{ inputs.config }}
           index-path: ${{ steps.index.outputs.index-path }}
-          raw-path: ${{ steps.index.outputs.raw-path }}

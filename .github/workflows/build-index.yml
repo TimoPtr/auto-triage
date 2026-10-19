@@ -48,6 +48,7 @@ jobs:
         run: |
           set -euo pipefail
           echo "repo=${JOB_WORKFLOW_REF%%/.github/*}" >> "$GITHUB_OUTPUT"
+          echo "KB_JOB_START=$(date +%s)" >> "$GITHUB_ENV"
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: ${{ steps.self.outputs.repo }}
@@ -94,9 +95,12 @@ jobs:
           previous=()
           if [ "$PREVIOUS_USABLE" = "true" ]; then cp "$INDEX" "$INDEX.previous"; previous=(--previous "$INDEX.previous"); fi
           # Stop before the job timeout: a step that fails still runs the failure steps, a cancelled job does not.
+          # The margin is measured from the job start, so the setup steps do not eat into it.
           margin=20
           [ "$TIMEOUT_MINUTES" -gt 40 ] || margin=$((TIMEOUT_MINUTES / 4))
-          timeout --kill-after=60 "$(((TIMEOUT_MINUTES - margin) * 60))" \
+          budget=$(((TIMEOUT_MINUTES - margin) * 60 - ($(date +%s) - KB_JOB_START)))
+          [ "$budget" -gt 60 ] || budget=60
+          timeout --kill-after=60 "$budget" \
             node "$BOT_SCRIPTS_DIR/src/cli/build.ts" --config "$CONFIG" --out "$INDEX" --raw "$RAW" \
               --model-cache "$KB_MODEL_CACHE" "${previous[@]}" "${args[@]}"
           rm -f "$INDEX.previous"

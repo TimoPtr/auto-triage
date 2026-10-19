@@ -131,7 +131,7 @@ Nightly rebuild, manual run, and a run on every push that touches the config:
             home-assistant/companion.home-assistant
             home-assistant/contributors.home-assistant.io
 
-Append on close, so a resolution is searchable minutes after the issue or pull request closes:
+Append on close, so a resolution is searchable shortly after the issue or pull request closes:
 
     name: Knowledge index append
 
@@ -152,6 +152,11 @@ Append on close, so a resolution is searchable minutes after the issue or pull r
         with:
           slug: android
           item: ${{ github.event_name == 'issues' && format('issue:{0}', github.event.issue.number) || format('pull:{0}', github.event.pull_request.number) }}
+
+Builds and appends of one slug share a concurrency group, so an append waits for a running build.
+GitHub keeps one pending run per group: closes that pile up during a long build show as cancelled
+and are covered by the next nightly rebuild. An append that changes nothing (a bot pull request
+that was never indexed) publishes nothing.
 
 `pull_request_target` is deliberate: a `pull_request` run from a fork writes the cache into the
 fork's scope, invisible to the nightly build. The called workflow never checks out pull request
@@ -178,9 +183,8 @@ First fill of a large repository: the android fill is about 11 000 API requests 
 token allows 1000 per hour, so the first nightly runs stop on the rate limit before the index is
 written. Each run keeps its raw store (the build is stopped 20 minutes before the job timeout and
 the raw store is published even when the build failed), and the next run continues from it, so the
-fill converges in two to three runs. A manual `workflow_dispatch` run between nights speeds it up,
-and a locally built index uploaded once is the shortcut (`gh run download` and the artifact names
-above). The tracking issue reports `missing` until the first index is published.
+fill converges in two to three runs. A manual `workflow_dispatch` run between nights speeds it up.
+The tracking issue reports `missing` until the first index is published.
 
 The pipeline self-test (`ci-pipeline.yml`) runs on every push to `main` and every pull request: it
 validates `examples/selfcheck/knowledge-bot.yaml`, builds an index of this repository's own issues

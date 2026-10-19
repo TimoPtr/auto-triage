@@ -62,3 +62,14 @@ test('skips a repository or kind the config does not index', async () => {
   assert.equal(result.action, 'skipped');
   assert.match(result.reason, /o\/other/);
 });
+
+test('reports whether the index changed, so a no-op removal is not republished', async () => {
+  const indexPath = await freshIndex('changed.sqlite');
+  const upserted = await appendItem({ config, repo, ref: { kind: 'issue', number: 12 }, indexPath, embedder, client });
+  assert.equal(upserted.changed, true);
+  const bot = await appendItem({ config, repo, ref: { kind: 'pull', number: 41 }, indexPath, embedder, client });
+  assert.equal(bot.action, 'removed');
+  assert.equal(bot.changed, false);
+  const skipped = await appendItem({ config, repo: 'o/other', ref: { kind: 'issue', number: 12 }, indexPath, embedder, client });
+  assert.equal(skipped.changed, false);
+});

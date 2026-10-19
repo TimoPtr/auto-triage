@@ -40,9 +40,10 @@ if (values.self) {
 }
 const configHash = createHash('sha256').update(readFileSync(values.config)).digest('hex').slice(0, 12);
 const embedder = createEmbedder(config.embedding, { cacheDir: values['model-cache'] });
-const raw = values.raw ? openRawStore(values.raw) : undefined;
-const providers = createProviders(config, { githubToken: process.env.GITHUB_TOKEN, checkouts, raw });
 const log = (line: string) => console.log(line);
+// A raw store from another schema version is moved aside: a build must not stay wedged on a restored file.
+const raw = values.raw ? openRawStore(values.raw, { recreateOnMismatch: true, log }) : undefined;
+const providers = createProviders(config, { githubToken: process.env.GITHUB_TOKEN, checkouts, raw });
 
 try {
   const stats = await buildIndex({ config, configHash, outPath: values.out, previousPath: values.previous, embedder, providers, log });

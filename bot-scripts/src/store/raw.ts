@@ -1,4 +1,5 @@
 import { DatabaseSync } from 'node:sqlite';
+import { renameSync } from 'node:fs';
 import { gunzipSync, gzipSync } from 'node:zlib';
 
 export const RAW_SCHEMA_VERSION = 1;
@@ -48,14 +49,30 @@ function toRecord<T>(row: Row): RawRecord<T> {
   };
 }
 
-/** Opens a raw store file, creating it when absent. */
-export function openRawStore(path: string): RawStore {
-  const db = new DatabaseSync(path);
+export interface OpenRawStoreOptions {
+  /** Move a store with another schema version aside (`<path>.schema-v<n>`) and start fresh instead of throwing. */
+  recreateOnMismatch?: boolean;
+  log?: (line: string) => void;
+}
+
+/** The schema version recorded in a raw store file, after creating the tables when absent. */
+function schemaVersionOf(db: DatabaseSync): string {
   db.exec(SCHEMA);
-  const version = (db.prepare("SELECT value FROM meta WHERE key = 'raw_schema_version'").get() as { value: string }).value;
+  return (db.prepare("SELECT value FROM meta WHERE key = 'raw_schema_version'").get() as { value: string }).value;
+}
+
+/** Opens a raw store file, creating it when absent. */
+export function openRawStore(path: string, { recreateOnMismatch = false, log = () => {} }: OpenRawStoreOptions = {}): RawStore {
+  let db = new DatabaseSync(path);
+  let version = schemaVersionOf(db);
   if (version !== String(RAW_SCHEMA_VERSION)) {
     db.close();
-    throw new Error(`raw store schema ${version} at ${path} is not the supported ${RAW_SCHEMA_VERSION}`);
+    if (!recreateOnMismatch) throw new Error(`raw store schema ${version} at ${path} is not the supported ${RAW_SCHEMA_VERSION}`);
+    const aside = `${path}.schema-v${version}`;
+    renameSync(path, aside);
+    log(`raw store schema ${version} at ${path} is not the supported ${RAW_SCHEMA_VERSION}; moved to ${aside} and starting fresh`);
+    db = new DatabaseSync(path);
+    version = schemaVersionOf(db);
   }
   const columns = 'provider, origin, kind, id, updated_at, payload';
   const select = db.prepare(`SELECT ${columns} FROM raw_items WHERE provider = ? AND origin = ? AND kind = ? AND id = ?`);

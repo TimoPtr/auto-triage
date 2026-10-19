@@ -31,7 +31,8 @@ export interface AppendInput {
   log?: (line: string) => void;
 }
 export type AppendAction = 'upserted' | 'removed' | 'skipped';
-export interface AppendResult { action: AppendAction; reason?: string; stats?: WriteStats }
+/** `changed` is false when nothing in the index moved (a skip, or a removal of an item that was not there). */
+export interface AppendResult { action: AppendAction; changed: boolean; reason?: string; stats?: WriteStats }
 
 /** Reads one item from the API with the section of the config that governs its kind, or null when it no longer qualifies. */
 async function readOne({ config, repo, ref, client, raw, now }: AppendInput): Promise<IndexItem | null | 'unconfigured'> {
@@ -48,12 +49,12 @@ async function readOne({ config, repo, ref, client, raw, now }: AppendInput): Pr
 export async function appendItem(input: AppendInput): Promise<AppendResult> {
   const { repo, ref, indexPath, embedder, log = () => {} } = input;
   const item = await readOne(input);
-  if (item === 'unconfigured') return { action: 'skipped', reason: `${repo} has no ${ref.kind === 'issue' ? 'issues' : 'pulls'} section in the config` };
+  if (item === 'unconfigured') return { action: 'skipped', changed: false, reason: `${repo} has no ${ref.kind === 'issue' ? 'issues' : 'pulls'} section in the config` };
   if (!item) {
     const removed = removeItem({ indexPath, ref: { provider: 'github', origin: repo, source: ref.kind, sourceId: String(ref.number) } });
-    return { action: 'removed', reason: removed ? 'no longer qualifies' : 'not in the index and does not qualify' };
+    return { action: 'removed', changed: removed, reason: removed ? 'no longer qualifies' : 'not in the index and does not qualify' };
   }
   async function* one() { yield item as IndexItem; }
   const stats = await upsertItems({ indexPath, items: one(), embedder, log });
-  return { action: 'upserted', stats };
+  return { action: 'upserted', changed: true, stats };
 }
