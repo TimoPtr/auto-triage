@@ -1,0 +1,134 @@
+---
+name: Restore the knowledge index
+description: Restores the index and raw store from the Actions cache, then from the newest artifact, and reports their status.
+inputs:
+  slug:
+    description: Product slug, the prefix of cache keys and artifact names.
+    required: true
+  config:
+    description: Consumer config path.
+    default: .github/knowledge-bot.yaml
+  index-path:
+    description: Where the index file goes. Default .knowledge-bot/<slug>.sqlite.
+    default: ''
+  raw-path:
+    description: Where the raw store goes. Default .knowledge-bot/<slug>.raw.sqlite.
+    default: ''
+  artifact-fallback:
+    description: Try the newest artifact when the cache has nothing usable. Needs GH_TOKEN with actions read.
+    default: 'true'
+  fresh-days:
+    description: Age in days under which the index counts as fresh.
+    default: '2'
+outputs:
+  found:
+    description: Whether an index file exists after the restore.
+    value: ${{ steps.status.outputs.found }}
+  usable:
+    description: Whether this config can serve it.
+    value: ${{ steps.status.outputs.usable }}
+  status:
+    description: fresh, stale, unusable or missing.
+    value: ${{ steps.status.outputs.status }}
+  reason:
+    description: What blocks use, when unusable.
+    value: ${{ steps.status.outputs.reason }}
+  age-days:
+    description: Age of the index in days.
+    value: ${{ steps.status.outputs.age-days }}
+  items:
+    description: Item count.
+    value: ${{ steps.status.outputs.items }}
+  chunks:
+    description: Chunk count.
+    value: ${{ steps.status.outputs.chunks }}
+  source:
+    description: cache, artifact or none.
+    value: ${{ steps.source.outputs.source }}
+  index-path:
+    description: Resolved index path.
+    value: ${{ steps.paths.outputs.index }}
+  raw-path:
+    description: Resolved raw store path.
+    value: ${{ steps.paths.outputs.raw }}
+  format-version:
+    description: Index format version of these scripts.
+    value: ${{ steps.versions.outputs.format-version }}
+  raw-schema-version:
+    description: Raw store schema version of these scripts.
+    value: ${{ steps.versions.outputs.raw-schema-version }}
+runs:
+  using: composite
+  steps:
+    - id: paths
+      shell: bash
+      env:
+        SLUG: ${{ inputs.slug }}
+        INDEX: ${{ inputs.index-path }}
+        RAW: ${{ inputs.raw-path }}
+      run: |
+        set -euo pipefail
+        [[ "$SLUG" =~ ^[a-z0-9-]+$ ]] || { echo "slug must match ^[a-z0-9-]+$" >&2; exit 1; }
+        echo "index=${INDEX:-.knowledge-bot/$SLUG.sqlite}" >> "$GITHUB_OUTPUT"
+        echo "raw=${RAW:-.knowledge-bot/$SLUG.raw.sqlite}" >> "$GITHUB_OUTPUT"
+        mkdir -p .knowledge-bot
+    - id: versions
+      shell: bash
+      run: node "$BOT_SCRIPTS_DIR/src/cli/index-status.ts" --versions
+    - id: cache-index
+      uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      with:
+        path: ${{ steps.paths.outputs.index }}
+        key: ${{ inputs.slug }}-index-v${{ steps.versions.outputs.format-version }}-${{ github.run_id }}-${{ github.run_attempt }}
+        restore-keys: |
+          ${{ inputs.slug }}-index-v${{ steps.versions.outputs.format-version }}-
+    - id: cache-raw
+      uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      with:
+        path: ${{ steps.paths.outputs.raw }}
+        key: ${{ inputs.slug }}-raw-v${{ steps.versions.outputs.raw-schema-version }}-${{ github.run_id }}-${{ github.run_attempt }}
+        restore-keys: |
+          ${{ inputs.slug }}-raw-v${{ steps.versions.outputs.raw-schema-version }}-
+    - id: cached
+      shell: bash
+      env:
+        CONFIG: ${{ inputs.config }}
+        INDEX: ${{ steps.paths.outputs.index }}
+        FRESH_DAYS: ${{ inputs.fresh-days }}
+      run: node "$BOT_SCRIPTS_DIR/src/cli/index-status.ts" --config "$CONFIG" --index "$INDEX" --fresh-days "$FRESH_DAYS"
+    - id: artifact
+      if: inputs.artifact-fallback == 'true' && steps.cached.outputs.usable != 'true'
+      shell: bash
+      env:
+        SLUG: ${{ inputs.slug }}
+        INDEX: ${{ steps.paths.outputs.index }}
+        RAW: ${{ steps.paths.outputs.raw }}
+        ACTION_PATH: ${{ github.action_path }}
+      run: |
+        set -euo pipefail
+        rm -f "$INDEX"
+        index_id="$("$ACTION_PATH/restore-artifact.sh" "$SLUG-index" "$(dirname "$INDEX")")"
+        echo "index-artifact=$index_id" >> "$GITHUB_OUTPUT"
+        if [ ! -f "$RAW" ]; then
+          "$ACTION_PATH/restore-artifact.sh" "$SLUG-raw" "$(dirname "$RAW")" > /dev/null
+        fi
+    - id: status
+      shell: bash
+      env:
+        CONFIG: ${{ inputs.config }}
+        INDEX: ${{ steps.paths.outputs.index }}
+        FRESH_DAYS: ${{ inputs.fresh-days }}
+      run: node "$BOT_SCRIPTS_DIR/src/cli/index-status.ts" --config "$CONFIG" --index "$INDEX" --fresh-days "$FRESH_DAYS"
+    - id: source
+      shell: bash
+      env:
+        CACHED_USABLE: ${{ steps.cached.outputs.usable }}
+        FINAL_USABLE: ${{ steps.status.outputs.usable }}
+        ARTIFACT_ID: ${{ steps.artifact.outputs.index-artifact }}
+      run: |
+        set -euo pipefail
+        if [ "$CACHED_USABLE" = "true" ]; then source=cache
+        elif [ "$FINAL_USABLE" = "true" ] && [ -n "${ARTIFACT_ID:-}" ] && [ "$ARTIFACT_ID" != "0" ]; then source=artifact
+        else source=none; fi
+        echo "source=$source" >> "$GITHUB_OUTPUT"
+        echo "index: $source" >> "$GITHUB_STEP_SUMMARY"
