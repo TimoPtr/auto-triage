@@ -76,7 +76,7 @@ function loadPreviousVectors(previousPath: string | undefined, embedder: Embedde
   return vectors;
 }
 
-function statements(db: DatabaseSync) {
+export function statements(db: DatabaseSync) {
   return {
     item: db.prepare(`INSERT INTO items (source, provider, origin, source_id, url, title, audience, created_at, updated_at, outcome, extra)
                       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`),
@@ -87,15 +87,15 @@ function statements(db: DatabaseSync) {
   };
 }
 
-type Statements = ReturnType<typeof statements>;
+export type Statements = ReturnType<typeof statements>;
 
-function insertItem(stmt: Statements, item: IndexItem): number | bigint {
+export function insertItem(stmt: Statements, item: IndexItem): number | bigint {
   return stmt.item.run(item.source, item.provider, item.origin, item.sourceId, item.url, item.title, item.audience,
     item.createdAt, item.updatedAt ?? null, item.outcome ? JSON.stringify(item.outcome) : null,
     item.extra ? JSON.stringify(item.extra) : null).lastInsertRowid;
 }
 
-function insertChunk(stmt: Statements, itemId: number | bigint, chunk: IndexChunk, hash: string): bigint {
+export function insertChunk(stmt: Statements, itemId: number | bigint, chunk: IndexChunk, hash: string): bigint {
   return BigInt(stmt.chunk.run(itemId, chunk.seq, chunk.kind, chunk.heading ?? null, chunk.anchor ?? null,
     chunk.text, chunk.logs ?? null, chunk.authorRole ?? null, chunk.createdAt, hash).lastInsertRowid);
 }
