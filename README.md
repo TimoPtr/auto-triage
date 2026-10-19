@@ -22,19 +22,49 @@ callers. Design: the knowledge bot spec in `home-assistant/android`,
 
 ## Build and query an index locally
 
-The consumer config (here the android one) names the sources. Docs repositories are read from
-local checkouts passed with `--checkout`; issues are read through the GitHub API with `GITHUB_TOKEN`.
+The consumer config (here the android one) names the sources. Docs, code and files are read from
+local checkouts: `--self` is the consumer's own checkout, other repositories are passed with
+`--checkout`. Issues, pull requests, discussions and releases are read through the GitHub API with
+`GITHUB_TOKEN`; forum topics come from the Discourse JSON API anonymously.
 
     cd bot-scripts
     GITHUB_TOKEN=$(gh auth token) npm run build-index -- \
       --config ../../android/.github/knowledge-bot.yaml \
       --out ./knowledge-android.sqlite \
+      --raw ./knowledge-android.raw.sqlite \
+      --self ../../android \
       --checkout home-assistant/companion.home-assistant=../../companion.home-assistant \
       --checkout home-assistant/contributors.home-assistant.io=../../contributors.home-assistant.io
 
     npm run query -- --config ../../android/.github/knowledge-bot.yaml \
       --index ./knowledge-android.sqlite "widget stops updating after reboot"
 
+Add `--live-forum community.home-assistant.io/android-companion` to a query to fuse a live forum
+search into the ranking, for topics newer than the index.
+
 The first run downloads the embedding model (about 35 MB) into `.model-cache/`.
 Pass `--previous <older index>` to reuse the vectors of unchanged chunks. The index is a single
 SQLite file (FTS5 plus sqlite-vec) that `sqlite3` can open directly.
+
+### Sources
+
+Under `providers.github.<owner/repo>`:
+
+- `issues`: open and closed issues with their comments; the author role of every chunk comes from the API association, never from the text.
+- `pulls`: closed pull requests, merged or not, with the review threads that have a maintainer reply (one chunk per comment with its own role), the linked issues and the files touched; bot authors are skipped by default.
+- `discussions`: the discussions of the named categories with their accepted answer, read through GraphQL.
+- `releases`: published release notes chunked by section; prereleases are opt-in.
+- `docs`: a markdown tree with front matter, linked by slug or id when they stay on the docs site.
+- `code`: Kotlin sources as one chunk per top-level declaration, with the string resource keys it uses; maintainer audience.
+- `files`: Android string resources (`strings`) or markdown trees such as agent skills (`markdown`).
+
+Under `providers.discourse.<host>`: the topics of the named categories (slug or id), optionally filtered by tag, with the accepted answer; throttled to `requestsPerSecond`.
+
+### Raw store
+
+With `--raw`, every fetched payload is kept verbatim (gzip JSON per item) in a second SQLite file
+next to the index. It is gitignored like the index. It serves two purposes: the benchmark mines its
+ground truth (duplicate links, close reasons, `fixes #N`, docs links in maintainer replies) from the
+original material rather than from cleaned chunks, and a rebuild with the same store skips the
+comment, review and topic requests of items whose change marker (`updated_at`, `last_posted_at`)
+did not move.

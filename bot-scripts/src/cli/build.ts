@@ -15,12 +15,13 @@ const { values } = parseArgs({
     previous: { type: 'string' },
     raw: { type: 'string' },
     checkout: { type: 'string', multiple: true, default: [] },
+    self: { type: 'string' },
     'model-cache': { type: 'string', default: '.model-cache' },
   },
 });
 
 if (!values.config || !values.out) {
-  console.error('usage: build --config <knowledge-bot.yaml> --out <knowledge.sqlite> [--previous <sqlite>] [--raw <sqlite>] [--checkout owner/repo=<dir>]...');
+  console.error('usage: build --config <knowledge-bot.yaml> --out <knowledge.sqlite> [--previous <sqlite>] [--raw <sqlite>] [--self <dir>] [--checkout owner/repo=<dir>]...');
   process.exit(2);
 }
 
@@ -31,6 +32,12 @@ const checkouts = Object.fromEntries(values.checkout.map((pair) => {
 }));
 
 const config = loadConfig(values.config);
+// --self is the consumer's own checkout: every repository that reads code or files from a checkout and has no explicit one uses it.
+if (values.self) {
+  for (const [repo, repoConfig] of Object.entries(config.providers.github ?? {})) {
+    if ((repoConfig.code || repoConfig.files?.length) && !checkouts[repo]) checkouts[repo] = values.self;
+  }
+}
 const configHash = createHash('sha256').update(readFileSync(values.config)).digest('hex').slice(0, 12);
 const embedder = createEmbedder(config.embedding, { cacheDir: values['model-cache'] });
 const raw = values.raw ? openRawStore(values.raw) : undefined;
