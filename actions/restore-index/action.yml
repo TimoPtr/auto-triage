@@ -15,7 +15,7 @@ inputs:
     description: Where the raw store goes. Default .knowledge-bot/<slug>.raw.sqlite.
     default: ''
   artifact-fallback:
-    description: Try the newest artifact when the cache has nothing usable. Needs GH_TOKEN with actions read.
+    description: Try the newest artifact of a default-branch run when the cache has nothing usable. Needs GH_TOKEN with actions read.
     default: 'true'
   fresh-days:
     description: Age in days under which the index counts as fresh.
@@ -107,10 +107,10 @@ runs:
       run: |
         set -euo pipefail
         rm -f "$INDEX"
-        index_id="$("$ACTION_PATH/restore-artifact.sh" "$SLUG-index" "$(dirname "$INDEX")")"
+        index_id="$("$ACTION_PATH/restore-artifact.sh" "$SLUG-index" "$INDEX")"
         echo "index-artifact=$index_id" >> "$GITHUB_OUTPUT"
         if [ ! -f "$RAW" ]; then
-          "$ACTION_PATH/restore-artifact.sh" "$SLUG-raw" "$(dirname "$RAW")" > /dev/null
+          "$ACTION_PATH/restore-artifact.sh" "$SLUG-raw" "$RAW" > /dev/null
         fi
     - id: status
       shell: bash
