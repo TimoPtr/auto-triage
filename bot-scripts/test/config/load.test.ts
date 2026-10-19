@@ -45,3 +45,27 @@ test('closedWithinDays is optional and has no default', () => {
   const validated = validateConfig(config);
   assert.equal(validated.providers.github['home-assistant/android'].issues.closedWithinDays, undefined);
 });
+
+test('applies defaults to the new github source kinds', () => {
+  const android = loadConfig(fixture).providers.github['home-assistant/android'];
+  assert.deepEqual(android.pulls, { states: ['merged', 'closed'], reviews: true, excludeBots: true });
+  assert.deepEqual(android.discussions, { categories: ['general', 'q-a'], answers: true });
+  assert.deepEqual(android.releases, { includePrereleases: false });
+  assert.equal(android.code.ref, 'main');
+  assert.equal(android.code.audience, 'maintainer');
+  assert.equal(android.files[0].audience, 'maintainer');
+});
+
+test('applies defaults to a discourse site and rejects an unknown key', () => {
+  const config = loadConfig(fixture);
+  const site = config.providers.discourse['community.home-assistant.io'];
+  assert.deepEqual(site, { categories: ['android-companion'], tags: ['android'], solvedOnly: false, acceptedAnswers: true, requestsPerSecond: 4 });
+  (site as unknown as Record<string, unknown>).scrapeEverything = true;
+  assert.throws(() => validateConfig(config), (e) => e instanceof ConfigError && /discourse.*scrapeEverything/.test(e.message));
+});
+
+test('a file entry needs a known kind', () => {
+  const config = loadConfig(fixture);
+  config.providers.github['home-assistant/android'].files.push({ path: 'x', kind: 'pdf' } as never);
+  assert.throws(() => validateConfig(config), ConfigError);
+});

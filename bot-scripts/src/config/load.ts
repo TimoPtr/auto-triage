@@ -24,7 +24,7 @@ function readSchema(relative: string): JsonSchema {
  * key they validate under `providers`.
  */
 export function defaultProviderSchemas(): Record<string, JsonSchema> {
-  return { github: readSchema('providers/github.json') };
+  return { github: readSchema('providers/github.json'), discourse: readSchema('providers/discourse.json') };
 }
 
 function buildValidator(providerSchemas: Record<string, JsonSchema>) {

@@ -13,9 +13,57 @@ export interface DocsConfig {
   audience: Audience;
 }
 
+export interface PullsConfig {
+  /** `closed` means closed without merge. */
+  states: ('merged' | 'closed')[];
+  closedWithinDays?: number;
+  reviews: boolean;
+  excludeBots: boolean;
+}
+
+export interface DiscussionsConfig {
+  /** Category slugs. */
+  categories: string[];
+  answers: boolean;
+}
+
+export interface ReleasesConfig {
+  includePrereleases: boolean;
+  withinDays?: number;
+}
+
+export interface CodeConfig {
+  include: string[];
+  exclude: string[];
+  /** Branch used in the source links. */
+  ref: string;
+  audience: Audience;
+}
+
+export interface FileConfig {
+  path: string;
+  kind: 'strings' | 'markdown';
+  audience: Audience;
+}
+
 export interface GithubRepoConfig {
   issues?: IssuesConfig;
+  pulls?: PullsConfig;
+  discussions?: DiscussionsConfig;
+  releases?: ReleasesConfig;
   docs?: DocsConfig;
+  code?: CodeConfig;
+  files?: FileConfig[];
+}
+
+export interface DiscourseSiteConfig {
+  /** Category slugs or numeric ids as strings. */
+  categories: string[];
+  tags: string[];
+  solvedOnly: boolean;
+  acceptedAnswers: boolean;
+  closedWithinDays?: number;
+  requestsPerSecond: number;
 }
 
 export interface EmbeddingConfig {
@@ -43,7 +91,7 @@ export interface TriageConfig {
 export interface Config {
   version: 1;
   product: { name: string; slug: string };
-  providers: { github?: Record<string, GithubRepoConfig> };
+  providers: { github?: Record<string, GithubRepoConfig>; discourse?: Record<string, DiscourseSiteConfig> };
   embedding: EmbeddingConfig;
   peers: PeerConfig[];
   triage?: TriageConfig;

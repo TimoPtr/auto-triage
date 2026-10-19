@@ -3,7 +3,9 @@
   "$id": "https://home-assistant.io/auto-triage/providers/github.json",
   "type": "object",
   "minProperties": 1,
-  "propertyNames": { "pattern": "^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$" },
+  "propertyNames": {
+    "pattern": "^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$"
+  },
   "additionalProperties": {
     "type": "object",
     "additionalProperties": false,
@@ -13,19 +15,196 @@
         "type": "object",
         "additionalProperties": false,
         "properties": {
-          "states": { "type": "array", "items": { "enum": ["open", "closed"] }, "default": ["open", "closed"], "minItems": 1 },
-          "closedWithinDays": { "type": "integer", "minimum": 1, "description": "Only index issues closed within this many days. Omit to index every closed issue." },
-          "comments": { "type": "boolean", "default": true }
+          "states": {
+            "type": "array",
+            "items": {
+              "enum": [
+                "open",
+                "closed"
+              ]
+            },
+            "default": [
+              "open",
+              "closed"
+            ],
+            "minItems": 1
+          },
+          "closedWithinDays": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "Only index issues closed within this many days. Omit to index every closed issue."
+          },
+          "comments": {
+            "type": "boolean",
+            "default": true
+          }
         }
       },
       "docs": {
         "type": "object",
         "additionalProperties": false,
-        "required": ["path", "baseUrl"],
+        "required": [
+          "path",
+          "baseUrl"
+        ],
         "properties": {
-          "path": { "type": "string", "minLength": 1 },
-          "baseUrl": { "type": "string", "format": "uri" },
-          "audience": { "enum": ["user", "developer", "maintainer"], "default": "user" }
+          "path": {
+            "type": "string",
+            "minLength": 1
+          },
+          "baseUrl": {
+            "type": "string",
+            "format": "uri"
+          },
+          "audience": {
+            "enum": [
+              "user",
+              "developer",
+              "maintainer"
+            ],
+            "default": "user"
+          }
+        }
+      },
+      "pulls": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "states": {
+            "type": "array",
+            "items": {
+              "enum": [
+                "merged",
+                "closed"
+              ]
+            },
+            "default": [
+              "merged",
+              "closed"
+            ],
+            "minItems": 1,
+            "description": "closed means closed without merge."
+          },
+          "closedWithinDays": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "Only index pull requests closed within this many days. Omit for all."
+          },
+          "reviews": {
+            "type": "boolean",
+            "default": true,
+            "description": "Index review threads that have a maintainer reply."
+          },
+          "excludeBots": {
+            "type": "boolean",
+            "default": true,
+            "description": "Skip pull requests opened by bot accounts such as renovate."
+          }
+        }
+      },
+      "discussions": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "categories"
+        ],
+        "properties": {
+          "categories": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "minItems": 1,
+            "description": "Category slugs to index."
+          },
+          "answers": {
+            "type": "boolean",
+            "default": true,
+            "description": "Index the accepted answer as its own chunk."
+          }
+        }
+      },
+      "releases": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "includePrereleases": {
+            "type": "boolean",
+            "default": false
+          },
+          "withinDays": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "Only index releases published within this many days. Omit for all."
+          }
+        }
+      },
+      "code": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "include"
+        ],
+        "properties": {
+          "include": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "minItems": 1,
+            "description": "Glob patterns relative to the checkout."
+          },
+          "exclude": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "default": []
+          },
+          "ref": {
+            "type": "string",
+            "default": "main",
+            "description": "Branch used in the source links."
+          },
+          "audience": {
+            "enum": [
+              "user",
+              "developer",
+              "maintainer"
+            ],
+            "default": "maintainer"
+          }
+        }
+      },
+      "files": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "path",
+            "kind"
+          ],
+          "properties": {
+            "path": {
+              "type": "string",
+              "minLength": 1
+            },
+            "kind": {
+              "enum": [
+                "strings",
+                "markdown"
+              ]
+            },
+            "audience": {
+              "enum": [
+                "user",
+                "developer",
+                "maintainer"
+              ],
+              "default": "maintainer"
+            }
+          }
         }
       }
     }

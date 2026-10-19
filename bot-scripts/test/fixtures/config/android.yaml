@@ -12,6 +12,19 @@ providers:
         states: [open, closed]
         closedWithinDays: 730
         comments: true
+      pulls:
+        states: [merged, closed]
+      discussions:
+        categories: [general, q-a]
+      releases: {}
+      code:
+        include: ["**/*.kt"]
+        exclude: ["**/build/**"]
+      files:
+        - path: common/src/main/res/values/strings.xml
+          kind: strings
+        - path: .agents/skills
+          kind: markdown
     home-assistant/companion.home-assistant:
       docs:
         path: docs
@@ -21,6 +34,10 @@ providers:
         path: src/content/docs/companion
         baseUrl: https://contributors.home-assistant.io/companion/
         audience: developer
+  discourse:
+    community.home-assistant.io:
+      categories: [android-companion]
+      tags: [android]
 
 embedding:
   model: Xenova/bge-small-en-v1.5

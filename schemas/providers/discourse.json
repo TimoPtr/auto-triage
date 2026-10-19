@@ -1,0 +1,54 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://home-assistant.io/auto-triage/providers/discourse.json",
+  "type": "object",
+  "minProperties": 1,
+  "propertyNames": {
+    "pattern": "^[a-z0-9.-]+$"
+  },
+  "additionalProperties": {
+    "type": "object",
+    "additionalProperties": false,
+    "required": [
+      "categories"
+    ],
+    "properties": {
+      "categories": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        },
+        "minItems": 1,
+        "description": "Category slugs or numeric ids. A topic must be in one of them."
+      },
+      "tags": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        },
+        "default": [],
+        "description": "When given, a topic must also carry one of these tags."
+      },
+      "solvedOnly": {
+        "type": "boolean",
+        "default": false
+      },
+      "acceptedAnswers": {
+        "type": "boolean",
+        "default": true,
+        "description": "Index the accepted answer as its own chunk."
+      },
+      "closedWithinDays": {
+        "type": "integer",
+        "minimum": 1,
+        "description": "Only index topics with activity within this many days. Omit for all."
+      },
+      "requestsPerSecond": {
+        "type": "number",
+        "exclusiveMinimum": 0,
+        "maximum": 20,
+        "default": 4
+      }
+    }
+  }
+}
