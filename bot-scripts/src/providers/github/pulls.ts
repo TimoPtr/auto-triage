@@ -23,6 +23,8 @@ interface ApiReviewComment {
   author_association?: string; created_at: string; body?: string | null;
 }
 interface PullDetails { reviewComments: ApiReviewComment[]; files: string[] }
+/** What the raw store holds for a pull request; `complete` is false when reviews were not wanted at fetch time. */
+interface StoredPull extends PullDetails { pull: ApiPull; complete: boolean }
 
 function isBot(pull: ApiPull): boolean {
   return pull.user?.type === 'Bot' || (pull.user?.login ?? '').endsWith('[bot]');
@@ -76,10 +78,12 @@ function reviewChunks(comments: ApiReviewComment[], firstSeq: number, author: st
   return chunks;
 }
 
-/** Review comments and files of one pull request: from the raw store when unchanged, else fetched and recorded. */
+/** Review comments and files of one pull request: from the raw store when unchanged and complete, else fetched and recorded. */
 async function pullDetails(client: PaginatingClient, repo: string, pull: ApiPull, wanted: boolean, raw?: RawStore): Promise<PullDetails> {
-  const stored = raw?.get<{ reviewComments: ApiReviewComment[]; files: string[] }>('github', repo, 'pull', String(pull.number));
-  if (stored && stored.updatedAt === pull.updated_at) return { reviewComments: stored.payload.reviewComments, files: stored.payload.files };
+  const stored = raw?.get<StoredPull>('github', repo, 'pull', String(pull.number));
+  if (stored && stored.updatedAt === pull.updated_at && (stored.payload.complete || !wanted)) {
+    return { reviewComments: stored.payload.reviewComments, files: stored.payload.files };
+  }
   const details: PullDetails = { reviewComments: [], files: [] };
   if (wanted) {
     for await (const c of client.paginate(`/repos/${repo}/pulls/${pull.number}/comments`, { per_page: 100 })) details.reviewComments.push(c as ApiReviewComment);
@@ -88,7 +92,8 @@ async function pullDetails(client: PaginatingClient, repo: string, pull: ApiPull
       details.files.push((f as { filename: string }).filename);
     }
   }
-  raw?.put({ provider: 'github', origin: repo, kind: 'pull', id: String(pull.number), updatedAt: pull.updated_at, payload: { pull, ...details } });
+  const payload: StoredPull = { pull, ...details, complete: wanted };
+  raw?.put({ provider: 'github', origin: repo, kind: 'pull', id: String(pull.number), updatedAt: pull.updated_at, payload });
   return details;
 }
 

@@ -58,15 +58,22 @@ function commentChunks(comment: ApiComment, firstSeq: number, reporterLogin: str
   }));
 }
 
-/** Comments of one issue: from the raw store when the issue did not change, else fetched and recorded. */
+/** What the raw store holds for an issue; `complete` is false when comments were not wanted at fetch time. */
+interface StoredIssue { issue: ApiIssue; comments: ApiComment[]; complete: boolean }
+
+/**
+ * Comments of one issue: from the raw store when the issue did not change and
+ * the stored payload is complete, else fetched and recorded.
+ */
 async function issueComments(client: PaginatingClient, repo: string, issue: ApiIssue, wanted: boolean, raw?: RawStore): Promise<ApiComment[]> {
-  const stored = raw?.get('github', repo, 'issue', String(issue.number));
-  if (stored && stored.updatedAt === issue.updated_at) return (stored.payload as { comments: ApiComment[] }).comments;
+  const stored = raw?.get<StoredIssue>('github', repo, 'issue', String(issue.number));
+  if (stored && stored.updatedAt === issue.updated_at && (stored.payload.complete || !wanted)) return stored.payload.comments;
   const comments: ApiComment[] = [];
   if (wanted && issue.comments > 0) {
     for await (const comment of client.paginate(`/repos/${repo}/issues/${issue.number}/comments`, { per_page: 100 })) comments.push(comment as ApiComment);
   }
-  raw?.put({ provider: 'github', origin: repo, kind: 'issue', id: String(issue.number), updatedAt: issue.updated_at, payload: { issue, comments } });
+  const payload: StoredIssue = { issue, comments, complete: wanted };
+  raw?.put({ provider: 'github', origin: repo, kind: 'issue', id: String(issue.number), updatedAt: issue.updated_at, payload });
   return comments;
 }
 

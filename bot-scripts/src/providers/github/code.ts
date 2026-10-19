@@ -6,6 +6,10 @@ import type { IndexChunk, IndexItem } from '../types.ts';
 import { DOCS_EPOCH } from './docs.ts';
 
 const CHUNK_CHARS = 2000;
+/** String keys listed per declaration; a sensor manager can reference dozens, which must not eat the chunk budget. */
+const MAX_TAIL_KEYS = 20;
+/** Longest `path\npackage` header; a longer one keeps its tail, where the file name is. */
+const MAX_HEADER_CHARS = 200;
 const DECLARATION = /^(?:(?:public|internal|private|protected|open|abstract|sealed|data|enum|annotation|value|inline|suspend|override|operator|infix|expect|actual|const|external|lateinit)\s+)*(?:class|interface|object|fun|val|var|typealias)\b\s*(?:<[^>]*>\s*)?(?:[\w.]+\.)?(\w+)/;
 const KDOC_OR_ANNOTATION = /^(\s*\/\*\*|\s*\*|\s*\*\/|\s*@\w)/;
 const STRING_KEY = /\b(?:R|commonR)\.string\.(\w+)/g;
@@ -55,7 +59,7 @@ async function* walk(dir: string): AsyncGenerator<string> {
 function symbolChunks(source: string, header: string): IndexChunk[] {
   const chunks: IndexChunk[] = [];
   for (const decl of splitDeclarations(source)) {
-    const keys = Array.from(new Set(Array.from(decl.text.matchAll(STRING_KEY), (m) => m[1])));
+    const keys = Array.from(new Set(Array.from(decl.text.matchAll(STRING_KEY), (m) => m[1]))).slice(0, MAX_TAIL_KEYS);
     const tail = keys.length ? `\nstrings: ${keys.join(', ')}` : '';
     for (const piece of packText(decl.text, { maxChars: CHUNK_CHARS - header.length - tail.length - 2 })) {
       chunks.push({ seq: chunks.length, kind: 'symbol', heading: decl.name, text: `${header}\n${piece}${tail}`, logs: null, createdAt: DOCS_EPOCH });
@@ -75,7 +79,8 @@ export async function* readCode({ repo, checkoutPath, options }: ReadCodeInput):
     if (!include.some((r) => r.test(rel)) || exclude.some((r) => r.test(rel))) continue;
     const source = await readFile(file, 'utf8');
     const pkg = /^package\s+([\w.]+)/m.exec(source)?.[1] ?? null;
-    const header = [rel, pkg ? `package ${pkg}` : null].filter(Boolean).join('\n');
+    const fullHeader = [rel, pkg ? `package ${pkg}` : null].filter(Boolean).join('\n');
+    const header = fullHeader.length <= MAX_HEADER_CHARS ? fullHeader : `…${fullHeader.slice(fullHeader.length - MAX_HEADER_CHARS + 1)}`;
     const chunks = symbolChunks(source, header);
     if (chunks.length === 0) continue;
     yield {

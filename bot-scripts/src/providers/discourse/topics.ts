@@ -37,10 +37,14 @@ async function* listTopics(client: DiscourseClient, category: SiteCategory): Asy
   }
 }
 
-/** The topic with its posts: from the raw store when the last post did not move, else fetched and recorded. */
+/**
+ * The topic with its posts: from the raw store when the last post did not move
+ * and the solved flag is unchanged (accepting an answer creates no post), else
+ * fetched and recorded.
+ */
 async function loadTopic(client: DiscourseClient, host: string, listed: ListTopic, raw?: RawStore): Promise<Topic> {
-  const stored = raw?.get<{ topic: Topic }>('discourse', host, 'topic', String(listed.id));
-  if (stored && stored.updatedAt === listed.last_posted_at) return stored.payload.topic;
+  const stored = raw?.get<{ listed: ListTopic; topic: Topic }>('discourse', host, 'topic', String(listed.id));
+  if (stored && stored.updatedAt === listed.last_posted_at && stored.payload.listed.has_accepted_answer === listed.has_accepted_answer) return stored.payload.topic;
   const topic = await client.getJson<Topic>(`/t/${listed.id}.json`);
   raw?.put({ provider: 'discourse', origin: host, kind: 'topic', id: String(listed.id), updatedAt: listed.last_posted_at, payload: { listed, topic } });
   return topic;
@@ -49,10 +53,10 @@ async function loadTopic(client: DiscourseClient, host: string, listed: ListTopi
 async function answerText(client: DiscourseClient, topic: Topic, id: number): Promise<{ text: string; createdAt: string } | null> {
   const number = topic.accepted_answer?.post_number;
   if (!number) return null;
-  const post = topic.post_stream.posts.find((p) => p.post_number === number);
-  if (post) return { text: htmlToText(post.cooked), createdAt: post.created_at };
-  const raw = await client.getJson<string>(`/raw/${id}/${number}`).catch(() => null);
-  return raw ? { text: String(raw), createdAt: topic.post_stream.posts[0]?.created_at ?? '' } : null;
+  // the topic payload carries the first page of posts; a later answer is fetched by its number
+  const post = topic.post_stream.posts.find((p) => p.post_number === number)
+    ?? await client.getJson<Post>(`/posts/by_number/${id}/${number}.json`).catch(() => null);
+  return post ? { text: htmlToText(post.cooked), createdAt: post.created_at } : null;
 }
 
 function keep(listed: ListTopic, options: DiscourseSiteConfig, cutoff: Date | null): boolean {

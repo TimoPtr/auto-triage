@@ -96,3 +96,26 @@ test('reuses a stored topic when its last post did not move', async () => {
   assert.equal(items[0].chunks[1].text, 'Disable battery optimisation for the app.');
   raw.close();
 });
+
+test('a topic marked solved after it was stored is fetched again', async () => {
+  const raw = openRawStore(join(tmp, 'raw-solved.sqlite'));
+  const unsolved = { ...fixture('topic-100.json'), accepted_answer: null };
+  raw.put({ provider: 'discourse', origin: 'community.example', kind: 'topic', id: '100', updatedAt: '2026-03-05T00:00:00Z', payload: { listed: { ...routes['/c/android-companion/42.json?page=0'].topic_list.topics[0], has_accepted_answer: false }, topic: unsolved } });
+  const log = [];
+  const items = await collect(base, log, raw);
+  assert.ok(log.includes('/t/100.json'), 'the solved flag changed, so the topic is fetched again');
+  assert.equal(items[0].chunks[1]?.kind, 'answer');
+  raw.close();
+});
+
+test('an accepted answer outside the first page of posts is fetched by number', async () => {
+  const topic = { ...fixture('topic-100.json'), accepted_answer: { post_number: 30 } };
+  const extraRoutes = { ...routes, '/t/100.json': topic, '/posts/by_number/100/30.json': { post_number: 30, cooked: '<p>Late answer.</p>', created_at: '2026-03-04T00:00:00Z', username: 'late' } };
+  const fetchImpl = async (url) => { const u = new URL(String(url)); const body = extraRoutes[u.pathname + u.search]; return body ? Response.json(body) : new Response('nope', { status: 404 }); };
+  const c = createDiscourseClient({ host: 'community.example', fetchImpl, sleepImpl: async () => {}, requestsPerSecond: 50 });
+  const out = [];
+  for await (const i of readTopics({ client: c, host: 'community.example', options: base, now: new Date('2026-10-15T00:00:00Z') })) out.push(i);
+  const answer = out[0].chunks.find((ch) => ch.kind === 'answer');
+  assert.equal(answer?.text, 'Late answer.');
+  assert.equal(answer?.createdAt, '2026-03-04T00:00:00Z');
+});

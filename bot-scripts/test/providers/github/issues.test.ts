@@ -153,3 +153,12 @@ test('fetches comments again when the issue was updated', async () => {
   assert.ok(log.some((c) => c.path === '/repos/o/r/issues/12/comments'));
   raw.close();
 });
+
+test('a pass without comments does not hide them from a later pass with comments on', async () => {
+  const raw = openRawStore(join(tmp, 'raw-partial.sqlite'));
+  await collect(readIssues({ client: fakeClient(), repo: 'o/r', options: { ...options, comments: false }, now, raw }));
+  const items = await collect(readIssues({ client: fakeClient(), repo: 'o/r', options, now, raw }));
+  const issue = items.find((i) => i.sourceId === '12');
+  assert.equal(issue.chunks.filter((c) => c.kind === 'comment').length, comments.length);
+  raw.close();
+});

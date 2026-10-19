@@ -111,3 +111,12 @@ test('reuses stored review comments and files when the pull request has not chan
   assert.deepEqual(pr.outcome.files, ['app/src/main/kotlin/Widget.kt', 'CHANGELOG.md']);
   raw.close();
 });
+
+test('a pass without reviews does not hide them from a later pass with reviews on', async () => {
+  const raw = openRawStore(join(tmp, 'raw-partial.sqlite'));
+  await collect({ ...options, reviews: false }, [], raw);
+  const pr = (await collect(options, [], raw)).find((i) => i.sourceId === '40');
+  assert.equal(pr.chunks.filter((c) => c.kind === 'review').length, 2);
+  assert.deepEqual(pr.outcome.files, ['app/src/main/kotlin/Widget.kt', 'CHANGELOG.md']);
+  raw.close();
+});

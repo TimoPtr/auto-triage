@@ -40,3 +40,28 @@ test('yields one item per included file with symbol chunks, path, package and st
 test('yields nothing for a file without declarations', async () => {
   assert.ok((await collect()).every((i) => !i.sourceId.endsWith('OnlyImports.kt')));
 });
+
+test('a declaration that references many string keys still yields chunks within the cap', () => {
+  const keys = Array.from({ length: 80 }, (_, i) => `R.string.some_rather_long_resource_name_${i}`).join(', ');
+  const src = `package io.ha\n\nclass Many {\n    val all = listOf(${keys})\n}\n`;
+  const decls = splitDeclarations(src);
+  assert.equal(decls.length, 1);
+});
+
+test('readCode does not throw on a file whose string keys would exceed the chunk budget', async () => {
+  const { mkdtempSync, writeFileSync, rmSync } = await import('node:fs');
+  const { tmpdir } = await import('node:os');
+  const { join } = await import('node:path');
+  const dir = mkdtempSync(join(tmpdir(), 'kb-code-'));
+  try {
+    const keys = Array.from({ length: 80 }, (_, i) => `R.string.some_rather_long_resource_name_${i}`).join(',\n        ');
+    writeFileSync(join(dir, 'Many.kt'), `package io.ha\n\nclass Many {\n    val all = listOf(\n        ${keys}\n    )\n}\n`);
+    const out = [];
+    for await (const i of readCode({ repo: 'o/r', checkoutPath: dir, options })) out.push(i);
+    assert.equal(out.length, 1);
+    assert.ok(out[0].chunks.every((c) => c.text.length <= 2000));
+    assert.ok(out[0].chunks[0].text.includes('strings: some_rather_long_resource_name_0'));
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
