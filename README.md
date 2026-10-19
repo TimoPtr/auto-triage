@@ -83,8 +83,9 @@ so expect about two hours for the very first android build. Every later build re
 store (no comment, review or topic request for an unchanged item) and the previous vectors, and
 takes the time of the listings plus the changed items.
 
-The Actions `GITHUB_TOKEN` only has 1000 requests per hour, so the first fill of a consumer is a
-local build uploaded once; the nightly job stays incremental.
+The Actions `GITHUB_TOKEN` only has 1000 requests per hour, so the first fill of a large consumer
+converges over a few nightly runs (see "Run it in GitHub Actions"); after that the nightly job stays
+incremental.
 
 ### Raw store
 
@@ -94,3 +95,93 @@ ground truth (duplicate links, close reasons, `fixes #N`, docs links in maintain
 original material rather than from cleaned chunks, and a rebuild with the same store skips the
 comment, review and topic requests of items whose change marker (`updated_at`, `last_posted_at`)
 did not move.
+
+## Run it in GitHub Actions
+
+A consumer holds its config at `.github/knowledge-bot.yaml` and two thin caller workflows. The
+reusable workflows check out this repository at the commit the caller references
+(`github.job_workflow_sha`), so the actions and scripts always match the workflow version.
+
+Nightly rebuild, manual run, and a run on every push that touches the config:
+
+    name: Knowledge index
+
+    on: # yamllint disable-line rule:truthy
+      schedule:
+        - cron: "17 3 * * *"
+      workflow_dispatch:
+      push:
+        branches: [main]
+        paths:
+          - .github/knowledge-bot.yaml
+          - .github/workflows/knowledge-index.yml
+
+    permissions: {}
+
+    jobs:
+      build:
+        uses: TimoPtr/auto-triage/.github/workflows/build-index.yml@main
+        permissions:
+          contents: read
+          actions: read
+          issues: write
+        with:
+          slug: android
+          checkouts: |
+            home-assistant/companion.home-assistant
+            home-assistant/contributors.home-assistant.io
+
+Append on close, so a resolution is searchable minutes after the issue or pull request closes:
+
+    name: Knowledge index append
+
+    on: # yamllint disable-line rule:truthy
+      issues:
+        types: [closed]
+      pull_request_target:
+        types: [closed]
+
+    permissions: {}
+
+    jobs:
+      append:
+        uses: TimoPtr/auto-triage/.github/workflows/append-on-close.yml@main
+        permissions:
+          contents: read
+          actions: read
+        with:
+          slug: android
+          item: ${{ github.event_name == 'issues' && format('issue:{0}', github.event.issue.number) || format('pull:{0}', github.event.pull_request.number) }}
+
+`pull_request_target` is deliberate: a `pull_request` run from a fork writes the cache into the
+fork's scope, invisible to the nightly build. The called workflow never checks out pull request
+code; it reads the API with the workflow token only. `actions: read` is for the artifact fallback,
+`issues: write` for the tracking issue the build keeps open while the index is stale, unusable or
+missing (`tracking: false` turns it off).
+
+What the pieces do:
+
+- `actions/setup-bot` installs `bot-scripts` with Node 24 and caches the embedding model.
+- `actions/restore-index` restores the index and the raw store from the Actions cache by key prefix
+  (`<slug>-index-v<format>-`, `<slug>-raw-v<schema>-`), validates the index against the config,
+  and falls back to the newest `<slug>-index` artifact produced by a default-branch run. Outputs:
+  `found`, `usable`, `status` (`fresh` under two days, `stale`, `unusable` with a `reason` such as
+  another model, `missing`), `source` (`cache`, `artifact`, `none`), `age-days`, `items`, `chunks`.
+- `actions/publish-index` saves the index and raw store to the cache under a run-scoped key and
+  uploads them as artifacts with 30 day retention; it refuses an unusable index.
+- `actions/report-index-status` writes the job summary and maintains the tracking issue.
+- `build-index.yml` ties them together with a full rebuild (`--previous` reuses the vectors of
+  unchanged chunks); `append-on-close.yml` upserts one item in place; `selfcheck.yml` validates a
+  config, for pull requests that touch it.
+
+First fill of a large repository: the android fill is about 11 000 API requests and the workflow
+token allows 1000 per hour, so the first nightly runs stop on the rate limit before the index is
+written. Each run keeps its raw store (the build is stopped 20 minutes before the job timeout and
+the raw store is published even when the build failed), and the next run continues from it, so the
+fill converges in two to three runs. A manual `workflow_dispatch` run between nights speeds it up,
+and a locally built index uploaded once is the shortcut (`gh run download` and the artifact names
+above). The tracking issue reports `missing` until the first index is published.
+
+The pipeline self-test (`ci-pipeline.yml`) runs on every push to `main` and every pull request: it
+validates `examples/selfcheck/knowledge-bot.yaml`, builds an index of this repository's own issues
+and docs through the reusable workflow, restores it in a second job and runs one query.
