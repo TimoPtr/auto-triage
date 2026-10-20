@@ -69,18 +69,14 @@ Everything below is already in place for `home-assistant/android` and can be cop
    tracking issue stays open while the index is missing or stale and closes on the first healthy
    run. After that, a nightly run is incremental and takes a few minutes (see "Build time").
 
-4. **Install the triage workflow** once the index exists, with the gh-aw CLI
-   (`gh extension install github/gh-aw`):
-
-       gh aw add TimoPtr/auto-triage/triage@main -n knowledge-triage
-       gh aw compile knowledge-triage
-
-   Commit both `.github/workflows/knowledge-triage.md` and the compiled `.lock.yml`. The agent job
-   needs `copilot-requests: write`, which the template declares; the repository must have Copilot
-   agentic workflows enabled. With `staged: true` every new issue produces a run whose summary
-   holds the comment that would have been posted; read those for a week or two, then set `staged:
-   false` and recompile nothing (the config is read at run time). "Triage workflow" explains the
-   three jobs and `ai-recheck`.
+4. **Add the triage caller** once the index exists: `knowledge-triage.yml` from "Triage
+   workflow", on `issues: [opened, labeled]` and `workflow_dispatch`, calling
+   `.github/workflows/triage.lock.yml` of this repository with `contents: read`, `actions: read`,
+   `issues: write` and `copilot-requests: write`. No gh-aw tooling is needed in the consumer; the
+   repository must have Copilot agentic workflows enabled. With `staged: true` every new issue
+   produces a run whose summary holds the comment that would have been posted; read those for a
+   week or two, then set `staged: false` (the config is read at run time). "Triage workflow"
+   explains the three jobs and `ai-recheck`.
 
 5. **Optional: benchmark cases.** Point `evalCases` at a directory and run `mine-cases` once to
    seed it from the repository's own duplicates and fixes ("Benchmark"); the nightly build then
@@ -100,7 +96,8 @@ Until this repository moves to the `home-assistant` organization and tags `v1`, 
   builder, the verdict parser and the comment renderer.
 - `bot-scripts/src/feedback/` the quality loop: reactions, replies and outcomes of the bot comments,
   the suppression list and the digest.
-- `workflows/` gh-aw workflow templates a consumer installs with `gh aw add`: `triage.md`.
+- `.github/workflows/` the reusable workflows consumers call: `build-index.yml`, `append-on-close.yml`,
+  `selfcheck.yml`, and the gh-aw workflow `triage.md` with its compiled `triage.lock.yml`.
 - `schemas/` JSON Schema for the config, the eval cases, the handoff and the index metadata.
 - `docs/superpowers/plans/` implementation plans, one per phase.
 
@@ -436,20 +433,49 @@ and docs through the reusable workflow, restores it in a second job and runs one
 
 ## Triage workflow
 
-`workflows/triage.md` is a gh-aw workflow (Copilot engine) that comments on a new issue with the
-closest earlier reports, discussions and docs, and a short answer when it is confident. Install it
-in a consumer and compile it there:
+`.github/workflows/triage.md` is a gh-aw workflow (Copilot engine) that comments on a new issue
+with the closest earlier reports, discussions and docs, and a short answer when it is confident. It
+is a reusable workflow: its compiled `triage.lock.yml` is committed here (the `lock` job of the
+test workflow fails when it is stale; regenerate with `gh aw compile triage`) and a consumer calls
+it from a thin workflow that owns the triggers:
 
-    gh aw add TimoPtr/auto-triage/triage@main -n knowledge-triage
-    gh aw compile knowledge-triage
+    name: Knowledge triage
 
-Until the repository moves to the organization and tags `v1`, the template checks out
-`TimoPtr/auto-triage@main` in two places (marked `TODO pin by SHA`); the consumer edits those
-lines when it pins.
+    on: # yamllint disable-line rule:truthy
+      issues:
+        types: [opened, labeled]
+      workflow_dispatch:
+        inputs:
+          issue-number:
+            description: Issue to triage
+            required: true
+            type: string
 
-It runs on `issues: opened`, on the `ai-recheck` label (removed again so it can be re-applied),
-and by hand through `workflow_dispatch` with an issue number. `roles: all` is set so issues from
-outside reporters are triaged too; the issue text is therefore treated as data everywhere.
+    permissions: {}
+
+    concurrency:
+      group: knowledge-triage-${{ github.event.issue.number || inputs.issue-number }}
+      cancel-in-progress: false
+
+    jobs:
+      triage:
+        uses: TimoPtr/auto-triage/.github/workflows/triage.lock.yml@main
+        permissions:
+          contents: read
+          actions: read
+          issues: write
+          copilot-requests: write
+        with:
+          issue-number: ${{ github.event.issue.number || inputs.issue-number }}
+          event-action: ${{ github.event.action || 'dispatch' }}
+          label: ${{ github.event.label.name || '' }}
+
+The called workflow checks this repository out at the commit the caller references
+(`github.job_workflow_sha`), so the scripts match the workflow version; pin by SHA once `v1`
+exists. The Copilot engine runs on the workflow token with `copilot-requests: write`; no secret is
+added. A `labeled` event runs only for `ai-recheck` (removed again so it can be re-applied), a
+manual run passes `dispatch`. Who may trigger a run is the caller's choice of events: issues from
+anyone are triaged, so the issue text is treated as data everywhere.
 
 What happens, in three jobs:
 
