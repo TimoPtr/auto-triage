@@ -14,6 +14,8 @@ const page = [
   { tag_name: '2026.10.1', name: null, draft: false, prerelease: true, published_at: '2026-10-06T13:38:43Z', html_url: 'https://github.com/o/r/releases/tag/2026.10.1', body: 'beta' },
   { tag_name: 'draft', name: null, draft: true, prerelease: false, published_at: null, html_url: 'https://github.com/o/r/releases/tag/draft', body: 'x' },
   { tag_name: '2022.1.0', name: 'Old', draft: false, prerelease: false, published_at: '2022-01-10T00:00:00Z', html_url: 'https://github.com/o/r/releases/tag/2022.1.0', body: 'Old notes' },
+  // Listed last because its commit is the oldest, yet published recently: a patch of an earlier train.
+  { tag_name: '2021.12.9', name: 'Patch', draft: false, prerelease: false, published_at: '2026-02-01T00:00:00Z', html_url: 'https://github.com/o/r/releases/tag/2021.12.9', body: 'Backport' },
 ];
 const requests = [];
 const client = { async *paginate(path) { requests.push(path); if (path === '/repos/o/r/releases') yield* page; } };
@@ -21,7 +23,7 @@ async function collect(options, raw = undefined, since = undefined) { const out 
 
 test('indexes stable releases with sections and skips drafts and prereleases by default', async () => {
   const items = await collect({ includePrereleases: false });
-  assert.deepEqual(items.map((i) => i.sourceId), ['2026.8.4', '2022.1.0']);
+  assert.deepEqual(items.map((i) => i.sourceId), ['2026.8.4', '2022.1.0', '2021.12.9']);
   const r = items[0];
   assert.equal(r.source, 'release');
   assert.equal(r.createdAt, '2026-08-31T09:42:13Z');
@@ -44,7 +46,7 @@ test('records releases in the raw store', async () => {
   raw.close();
 });
 
-test('since stops the release listing at the first older release and skips drafts', async () => {
+test('since keeps every release published after it, wherever the commit-ordered listing puts it', async () => {
   const items = await collect({ includePrereleases: true }, undefined, new Date('2026-01-01T00:00:00Z'));
-  assert.deepEqual(items.map((i) => i.sourceId), ['2026.8.4', '2026.10.1']);
+  assert.deepEqual(items.map((i) => i.sourceId), ['2026.8.4', '2026.10.1', '2021.12.9']);
 });

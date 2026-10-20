@@ -12,11 +12,12 @@ export interface ReadReleasesInput { client: PaginatingClient; repo: string; opt
 /** Reads release notes: which version shipped what. */
 export async function* readReleases({ client, repo, options, now = new Date(), raw, since }: ReadReleasesInput): AsyncGenerator<IndexItem> {
   const cutoff = options.withinDays === undefined ? null : new Date(now.getTime() - options.withinDays * DAY_MS);
-  // Releases come newest first; with `since` the first older published release ends the listing.
+  // The listing is ordered by the commit date, not the publish date (a patch of an earlier train
+  // sits far down), so `since` filters every release rather than ending the listing early.
   for await (const element of client.paginate(`/repos/${repo}/releases`, { per_page: 100 })) {
     const release = element as ApiRelease;
     if (release.draft || !release.published_at) continue;
-    if (since && new Date(release.published_at) < since) return;
+    if (since && new Date(release.published_at) < since) continue;
     if (release.prerelease && !options.includePrereleases) continue;
     if (cutoff && new Date(release.published_at) < cutoff) continue;
     const title = release.name?.trim() ? `${release.tag_name} ${release.name.trim()}` : release.tag_name;

@@ -191,10 +191,13 @@ from a copy of that index and asks each source only for what changed since the i
 forum categories listed newest first until the first older item. Docs, code and files are re-read
 from the checkouts every time, which takes seconds and is how a deleted page or file leaves the
 index. A listed item that no longer qualifies (an issue reopened when only closed ones are indexed,
-a topic moved out of the category) is removed. What the sources cannot report incrementally, such
-as a deleted or transferred issue, waits for the full rebuild, which happens when the last one is 7
-or more days old, when the config changed, when no usable index exists, or when the `full` input
-of `build-index.yml` is set (the android caller exposes it on `workflow_dispatch`).
+a forum topic that lost its tag) is removed. What the sources cannot report incrementally waits for
+the full rebuild: a deleted or transferred issue, a reopened pull request, a topic or discussion
+moved out of its category, a forum answer accepted without a new post. The full rebuild happens
+when the last one is 7 or more days old, when the config changed, when no usable index exists, or
+when the `full` input of `build-index.yml` is set (the android caller exposes it on
+`workflow_dispatch`). Releases are listed in commit order, so the incremental build reads the whole
+list and keeps those published since; that is a handful of requests.
 
 First fill of a large repository: the android fill is about 11 000 API requests and the workflow
 token allows 1000 per hour, so the first nightly runs stop on the rate limit before the index is
