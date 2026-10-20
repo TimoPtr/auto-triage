@@ -5,6 +5,91 @@ agentic workflow templates. Consumer repositories hold a `.github/knowledge-bot.
 callers. Design: the knowledge bot spec in `home-assistant/android`,
 `docs/superpowers/specs/2026-10-15-knowledge-bot-design.md`.
 
+## Set up a repository
+
+Five steps, in this order; the index must exist before the triage workflow is worth installing.
+Everything below is already in place for `home-assistant/android` and can be copied from there.
+
+1. **Write `.github/knowledge-bot.yaml`.** The schema is `schemas/config.base.json` plus one
+   fragment per provider under `schemas/providers/`; unknown keys fail the build. A minimal config
+   that indexes the repository's own issues and pull requests, its documentation from another
+   repository and one forum category:
+
+       # Knowledge bot configuration. Schema: https://github.com/home-assistant/auto-triage/tree/main/schemas
+       version: 1
+
+       product:
+         name: My Product
+         slug: my-product            # prefix of the cache keys and artifact names
+
+       providers:
+         github:
+           my-org/my-product:
+             issues:
+               states: [open, closed]
+               comments: true
+             pulls:
+               states: [merged, closed]
+           my-org/my-product-docs:
+             docs:
+               path: docs
+               baseUrl: https://docs.example.org/
+         discourse:
+           community.example.org:
+             categories: [my-product]
+
+       embedding:
+         model: Xenova/bge-small-en-v1.5
+         revision: ea104dacec62c0de699686887e3f920caeb4f3e3
+         dtype: q8
+         dimensions: 384
+         pooling: cls
+
+       triage:
+         staged: true                 # comments go to the run summary until you flip this
+         minSimilarity: 0.35
+         suppressSimilarity: 0.8
+
+   Every source kind and its options are described under "Sources"; `releases`, `discussions`,
+   `code` and `files` are the other kinds. Check it locally before committing:
+   `cd bot-scripts && node src/cli/validate-config.ts --config <path>`, or add the `selfcheck.yml`
+   reusable workflow to run that check on pull requests that touch the file.
+
+2. **Add the two caller workflows** from "Run it in GitHub Actions": `knowledge-index.yml`
+   (nightly, manual, and on pushes that touch the config; `checkouts:` lists the repositories read
+   from a checkout, here `my-org/my-product-docs`) and `knowledge-append.yml` (`issues: closed`,
+   `pull_request_target: closed`). They need `contents: read`, `actions: read` (the artifact
+   fallback) and, for the build, `issues: write` (the tracking and digest issues, label
+   `knowledge-bot`, created on first use; `tracking: false` turns them off). No secret is added:
+   everything runs on the workflow token.
+
+3. **Let the first fill converge.** The workflow token allows 1000 API requests per hour, so a
+   large repository needs two or three nightly runs before the first index is published; a manual
+   `workflow_dispatch` between nights speeds it up, and the run summary shows the progress. A
+   tracking issue stays open while the index is missing or stale and closes on the first healthy
+   run. After that, a nightly run is incremental and takes a few minutes (see "Build time").
+
+4. **Install the triage workflow** once the index exists, with the gh-aw CLI
+   (`gh extension install github/gh-aw`):
+
+       gh aw add TimoPtr/auto-triage/triage@main -n knowledge-triage
+       gh aw compile knowledge-triage
+
+   Commit both `.github/workflows/knowledge-triage.md` and the compiled `.lock.yml`. The agent job
+   needs `copilot-requests: write`, which the template declares; the repository must have Copilot
+   agentic workflows enabled. With `staged: true` every new issue produces a run whose summary
+   holds the comment that would have been posted; read those for a week or two, then set `staged:
+   false` and recompile nothing (the config is read at run time). "Triage workflow" explains the
+   three jobs and `ai-recheck`.
+
+5. **Optional: benchmark cases.** Point `evalCases` at a directory and run `mine-cases` once to
+   seed it from the repository's own duplicates and fixes ("Benchmark"); the nightly build then
+   scores the test split, compares it with the previous night and keeps a tracking issue open on a
+   regression ("Quality loop"). Without cases the build skips the eval with one log line.
+
+Until this repository moves to the `home-assistant` organization and tags `v1`, callers reference
+`@main`; after that, pin by SHA with a version comment, as the android callers note in a `TODO`.
+
 ## Layout
 
 - `bot-scripts/` TypeScript run natively by Node 24 (type stripping, no build step): providers, index
