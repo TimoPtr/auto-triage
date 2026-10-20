@@ -1,6 +1,7 @@
 import type { GitHubClient } from '../providers/github/client.ts';
 
-const REPOSITORY = /^[\w.-]+\/[\w.-]+$/;
+/** owner/name as GitHub allows them: an owner starts alphanumeric, a name is never `.` or `..`. */
+const REPOSITORY = /^[A-Za-z0-9][\w-]*\/(?!\.{1,2}$)[\w.-]+$/;
 
 export interface TriageIssue {
   number: number;

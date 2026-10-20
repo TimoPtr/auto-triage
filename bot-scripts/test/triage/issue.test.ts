@@ -32,4 +32,7 @@ test('refuses an invalid number or repository before any request', async () => {
   await assert.rejects(fetchIssue(client, 'o/r', 0), /issue number/);
   await assert.rejects(fetchIssue(client, 'o/r', 1.5), /issue number/);
   await assert.rejects(fetchIssue(client, 'o/r/x', 1), /repository/);
+  await assert.rejects(fetchIssue(client, 'o/..', 1), /repository/);
+  await assert.rejects(fetchIssue(client, '../r', 1), /repository/);
+  await assert.rejects(fetchIssue(client, '-o/r', 1), /repository/);
 });
