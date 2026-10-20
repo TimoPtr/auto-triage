@@ -226,3 +226,10 @@ test('sample markdown lists n cases in hash order with links and an empty verdic
   assert.match(rows[0], /\| dup-\d \| duplicate \| x \| https:\/\/github\.com\/o\/r\/issues\/\d \| https:\/\/github\.com\/o\/r\/issues\/10\d \|\s*\|$/);
   assert.notDeepEqual(rows, md.split('\n').filter((l) => l.startsWith('| dup-')).sort());
 });
+
+test('refuses a config with more than one issues repository, since case ids carry no repository', () => {
+  const s = store('two-repos');
+  const two: Config = { ...config, providers: { ...config.providers, github: { ...config.providers.github, 'o/second': { issues: { states: ['closed'], comments: true } } } } };
+  assert.throws(() => mineCases({ config: two, raw: s.raw }), /one repository with issues/);
+  s.raw.close();
+});

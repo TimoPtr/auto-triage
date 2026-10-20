@@ -124,3 +124,12 @@ test('summary markdown lists relations and the gate line', async () => {
   assert.match(md, /\| 0\.30 \|/);
   assert.match(md, /errors: 1/);
 });
+
+test('ages candidates as of the case date, not today', async () => {
+  // issue 1 is 62 days old at this asOf; decayed only if the harness let retrieve use the real clock
+  const query: EvalCase[] = [{ ...base, id: 'aged', relation: 'curated', query: { type: 'text', text: 'widget stops', asOf: '2025-05-02T12:00:00Z' }, expected: [{ type: 'issue', number: 1 }] }];
+  const decayed = await run(query, { retrieveOptions: { decayAfterDays: 365, decayFactor: 0.5 } });
+  const plain = await run(query, { retrieveOptions: { decayAfterDays: 365, decayFactor: 1 } });
+  const fusedOf = (r: typeof decayed) => r.results[0].ranked.find((e) => e.source === 'issue' && e.sourceId === '1')!.fused;
+  assert.equal(fusedOf(decayed), fusedOf(plain));
+});

@@ -186,7 +186,10 @@ export function mineCases({ config, raw, salt = '' }: { config: Config; raw: Raw
   const forumHosts = Object.keys(config.providers.discourse ?? {});
   const cases: EvalCase[] = [];
   const report: MiningReport = { counts: { byRelation: {}, byLabelSource: {} }, dropped: {}, negativesPool: 0 };
-  for (const name of Object.keys(github).filter((n) => github[n].issues)) {
+  const names = Object.keys(github).filter((n) => github[n].issues);
+  // case ids are `<prefix>-<number>` with no repository part; a second issues repository would collide
+  if (names.length > 1) throw new Error(`mining supports one repository with issues per config, found ${names.length}: ${names.join(', ')}`);
+  for (const name of names) {
     const miner = new Miner(loadRepo(raw, name), raw, docsBases, forumHosts);
     miner.duplicates();
     miner.fixes();

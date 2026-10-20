@@ -124,7 +124,9 @@ export async function runEval({ db, embedder, cases, mode = 'production', thresh
       if (mode === 'oracle' && expected.length === 0) continue;
       if (mode === 'null') { results.push(toResult(evalCase, nullRanking(index, query, random), 0, expected)); continue; }
       const text = mode === 'oracle' ? index.text(expected[0].ref).slice(0, ORACLE_CHARS) : query ? index.text(query) : (evalCase.query as { text: string }).text;
-      const hits = await retrieve(db, embedder, text, { ...retrieveOptions, k: RETRIEVE_K, asOf: evalCase.query.asOf, excludeItemId: query?.id });
+      // the age decay runs against the case's own instant, so a case sees what the bot would have seen
+      const now = evalCase.query.asOf ? new Date(evalCase.query.asOf) : undefined;
+      const hits = await retrieve(db, embedder, text, { ...retrieveOptions, k: RETRIEVE_K, asOf: evalCase.query.asOf, excludeItemId: query?.id, now });
       const ranked = hits.map((h) => ({ source: h.source, sourceId: h.sourceId, url: h.url, fused: h.scores.fused, similarity: h.scores.itemSimilarity }));
       results.push(toResult(evalCase, ranked, hits.bestSimilarity, expected));
     } catch (error) {
