@@ -11,6 +11,7 @@ import { createReplayFetch } from '../providers/replay.ts';
 import { openDatabase, readMeta } from '../store/db.ts';
 import { indexStatus } from '../index/status.ts';
 import { planBuild } from '../index/plan.ts';
+import { parseCheckouts, withSelf } from './checkouts.ts';
 
 const { values } = parseArgs({
   options: {
@@ -32,19 +33,8 @@ if (!values.config || !values.out || (values.offline && !values.raw)) {
   process.exit(2);
 }
 
-const checkouts = Object.fromEntries(values.checkout.map((pair) => {
-  const separator = pair.indexOf('=');
-  if (separator <= 0 || separator === pair.length - 1) throw new Error(`--checkout expects owner/repo=<dir>, got ${pair}`);
-  return [pair.slice(0, separator), pair.slice(separator + 1)];
-}));
-
 const config = loadConfig(values.config);
-// --self is the consumer's own checkout: every repository that reads code or files from a checkout and has no explicit one uses it.
-if (values.self) {
-  for (const [repo, repoConfig] of Object.entries(config.providers.github ?? {})) {
-    if ((repoConfig.code || repoConfig.files?.length) && !checkouts[repo]) checkouts[repo] = values.self;
-  }
-}
+const checkouts = withSelf(config, parseCheckouts(values.checkout), values.self);
 const configHash = createHash('sha256').update(readFileSync(values.config)).digest('hex').slice(0, 12);
 const embedder = createEmbedder(config.embedding, { cacheDir: values['model-cache'] });
 const log = (line: string) => console.log(line);

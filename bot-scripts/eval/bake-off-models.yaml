@@ -1,0 +1,45 @@
+---
+# Candidate embedding models for the bake-off (spec 5.2). Each revision is the commit sha read from
+# https://huggingface.co/api/models/<id> on 2026-10-20. Every repository ships onnx/model_quantized.onnx,
+# so every candidate runs at q8 like the default. Prefixes are the ones each model card asks for.
+models:
+  - name: all-MiniLM-L6-v2
+    embedding:
+      model: Xenova/all-MiniLM-L6-v2
+      revision: 751bff37182d3f1213fa05d7196b954e230abad9
+      dtype: q8
+      dimensions: 384
+      pooling: mean
+  - name: bge-small-en-v1.5
+    embedding:
+      model: Xenova/bge-small-en-v1.5
+      revision: ea104dacec62c0de699686887e3f920caeb4f3e3
+      dtype: q8
+      dimensions: 384
+      pooling: cls
+  - name: snowflake-arctic-embed-s
+    embedding:
+      model: Snowflake/snowflake-arctic-embed-s
+      revision: e596f507467533e48a2e17c007f0e1dacc837b33
+      dtype: q8
+      dimensions: 384
+      pooling: cls
+      queryPrefix: "Represent this sentence for searching relevant passages: "
+  - name: nomic-embed-text-v1.5
+    embedding:
+      model: nomic-ai/nomic-embed-text-v1.5
+      revision: e9b6763023c676ca8431644204f50c2b100d9aab
+      dtype: q8
+      dimensions: 768
+      pooling: mean
+      queryPrefix: "search_query: "
+      documentPrefix: "search_document: "
+  - name: embeddinggemma-300m
+    embedding:
+      model: onnx-community/embeddinggemma-300m-ONNX
+      revision: 5090578d9565bb06545b4552f76e6bc2c93e4a66
+      dtype: q8
+      dimensions: 768
+      pooling: mean
+      queryPrefix: "task: search result | query: "
+      documentPrefix: "title: none | text: "

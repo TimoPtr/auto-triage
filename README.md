@@ -111,6 +111,87 @@ way. Two things do not replay: an accepted forum answer that was not on the stor
 posts, and the GraphQL links the case mining fetches (those are stored by `mine-cases --github`,
 see Benchmark). On the android store, an offline rebuild with every vector reused takes 22 s.
 
+## Benchmark
+
+The benchmark measures the retrieval on cases mined from the consumer's own history, so a change to
+chunking, fusion, weights or the embedding model has a number before it ships. Outputs go under
+`bot-scripts/eval-out/` and `bot-scripts/bake-off/`, both gitignored.
+
+### Mine the cases
+
+    cd bot-scripts
+    GITHUB_TOKEN=$(gh auth token) npm run mine-cases -- \
+      --config ../../android/.github/knowledge-bot.yaml \
+      --raw ./knowledge-android.raw.sqlite \
+      --out ../../android/.github/knowledge-bot/eval --github
+
+`--github` first fetches, 50 items per GraphQL request, the duplicate marks of every closed issue
+and the closing references of every merged pull request, and stores them in the raw store as
+`links` records keyed by the item's `updated_at`; later runs reuse them and work offline. The rules,
+one case per query issue (`cases.jsonl`):
+
+| relation | label | query | expected | as of |
+| --- | --- | --- | --- | --- |
+| duplicate | timeline mark, else a maintainer comment saying "duplicate of #N" | the later-created issue | the earlier one | the mark or comment |
+| fixed-by | closing references, else "fixes #N" in a merged pull request body | the issue | the pull request | the merge |
+| docs | maintainer comment with a docs link, up to a minute after the close | the issue | the docs page (no fragment) | the comment |
+| forum | maintainer comment with a forum topic link that is in the store | the issue | the topic | the comment |
+| negative | fixed by a pull request and answered by nothing else | the issue | nothing | the issue's creation |
+
+Labels come only from maintainer actions (API association OWNER, MEMBER or COLLABORATOR). The query
+item is always excluded from the ranking and only chunks created before `asOf` are eligible, so a
+case sees what the bot would have seen. Negatives are drawn, by salted hash, to equal the number of
+duplicate, docs and forum cases. Each case gets a split from a salted hash of its id: 60 train,
+20 validation, 20 test; re-mining keeps the split, `--salt` re-draws it. `sample.md` lists 30 cases
+to re-derive by hand: when a rule is wrong, fix the rule and re-mine, never the case.
+`mining-report.json` counts the cases per relation and label source and what was dropped and why.
+
+Curated cases (recurring questions in the reporter's words, `query.type: text`) go in another
+`.jsonl` file of the same directory; the schema is `schemas/eval-case.json`. The consumer config
+names the directory with `evalCases`, relative to the config file.
+
+### Run the eval
+
+    npm run run-eval -- --config ../../android/.github/knowledge-bot.yaml \
+      --index ./knowledge-android.sqlite [--split test] [--mode production|oracle|null]
+
+Every case goes through the production `retrieve` with the as-of filter and the config's
+similarity floor. The run writes `summary.json`, `summary.md`, `cases.jsonl` (the ranked list of
+every case with scores) and `errors.jsonl` (cases that could not be scored: an expected item not in
+the index, a query item missing; they never enter the score). The summary reports recall at 5 and
+mean reciprocal rank over the positives, per relation, per expected source and per label source,
+and the gate (precision, specificity, sensitivity of "best similarity at or above the threshold")
+at the config's `triage.minSimilarity` plus a sweep from 0.30 to 0.95.
+
+`--mode oracle` queries with the expected item's own text and should score near 100; anything
+lower is a harness bug. `--mode null` ranks random items and shows the chance level. Run both before
+trusting a production number.
+
+### Compare two runs
+
+    npm run compare-eval -- eval-out/a/cases.jsonl eval-out/b/cases.jsonl
+
+Pairs the positive cases both runs scored and reports the recall at 5 difference of B minus A with
+a bootstrap 95 percent interval. A drop of more than 5 points whose interval excludes zero is a
+regression: exit code 3, for a workflow to gate on. Smaller moves are noise at this case count.
+
+### Bake-off
+
+    npm run bake-off -- --config ../../android/.github/knowledge-bot.yaml \
+      --raw ./knowledge-android.raw.sqlite --models ./eval/bake-off-models.yaml \
+      --out ./bake-off --split validation --self ../../android \
+      --checkout home-assistant/companion.home-assistant=../../companion.home-assistant \
+      --checkout home-assistant/contributors.home-assistant.io=../../contributors.home-assistant.io
+
+Builds one index per model of `eval/bake-off-models.yaml` offline from the raw store, runs the
+validation split through it and rewrites `bake-off.md` after every model, so a run that dies keeps
+its rows. Models are chosen on validation; the winner's test number is reported separately. A
+model whose download or build fails is a row marked skipped.
+
+### Results (android)
+
+Filled by the first benchmark run; see the end of this section once it has run.
+
 ## Run it in GitHub Actions
 
 A consumer holds its config at `.github/knowledge-bot.yaml` and two thin caller workflows. The
