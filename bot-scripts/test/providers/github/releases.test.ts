@@ -15,8 +15,9 @@ const page = [
   { tag_name: 'draft', name: null, draft: true, prerelease: false, published_at: null, html_url: 'https://github.com/o/r/releases/tag/draft', body: 'x' },
   { tag_name: '2022.1.0', name: 'Old', draft: false, prerelease: false, published_at: '2022-01-10T00:00:00Z', html_url: 'https://github.com/o/r/releases/tag/2022.1.0', body: 'Old notes' },
 ];
-const client = { async *paginate(path) { if (path === '/repos/o/r/releases') yield* page; } };
-async function collect(options, raw = undefined) { const out = []; for await (const i of readReleases({ client, repo: 'o/r', options, now: new Date('2026-10-15T00:00:00Z'), raw })) out.push(i); return out; }
+const requests = [];
+const client = { async *paginate(path) { requests.push(path); if (path === '/repos/o/r/releases') yield* page; } };
+async function collect(options, raw = undefined, since = undefined) { const out = []; for await (const i of readReleases({ client, repo: 'o/r', options, now: new Date('2026-10-15T00:00:00Z'), raw, since })) out.push(i); return out; }
 
 test('indexes stable releases with sections and skips drafts and prereleases by default', async () => {
   const items = await collect({ includePrereleases: false });
@@ -41,4 +42,9 @@ test('records releases in the raw store', async () => {
   assert.equal(record.updatedAt, '2026-08-31T09:42:13Z');
   assert.ok(record.payload.body.includes('assistant volume'));
   raw.close();
+});
+
+test('since stops the release listing at the first older release and skips drafts', async () => {
+  const items = await collect({ includePrereleases: true }, undefined, new Date('2026-01-01T00:00:00Z'));
+  assert.deepEqual(items.map((i) => i.sourceId), ['2026.8.4', '2026.10.1']);
 });

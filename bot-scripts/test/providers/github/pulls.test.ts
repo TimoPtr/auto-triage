@@ -18,7 +18,7 @@ function fakeClient(log = []) {
   return {
     async *paginate(path, params) {
       log.push({ path, params });
-      if (path === '/repos/o/r/pulls') yield* page;
+      if (path === '/repos/o/r/pulls') yield* params.direction === 'desc' ? [...page].reverse() : page;
       else if (path === '/repos/o/r/pulls/40/comments') yield* reviewComments;
       else if (path === '/repos/o/r/pulls/40/files') yield* files;
       else yield* [];
@@ -31,7 +31,7 @@ function fakeClient(log = []) {
 }
 const options: PullsConfig = { states: ['merged', 'closed'], reviews: true, excludeBots: true };
 const now = new Date('2026-10-15T00:00:00Z');
-async function collect(opts = options, log = [], raw = undefined) { const out = []; for await (const i of readPulls({ client: fakeClient(log), repo: 'o/r', options: opts, now, raw })) out.push(i); return out; }
+async function collect(opts = options, log = [], raw = undefined, since = undefined) { const out = []; for await (const i of readPulls({ client: fakeClient(log), repo: 'o/r', options: opts, now, raw, since })) out.push(i); return out; }
 
 test('yields a merged pull request with body, linked issues, files and the maintainer review thread', async () => {
   const pr = (await collect()).find((i) => i.sourceId === '40');
@@ -136,4 +136,17 @@ test('readPull returns null for a bot author, an unwanted state or an open pull 
   assert.equal(await readPull({ client: fakeClient(), repo: 'o/r', number: 42, options: { ...options, states: ['merged'] }, now }), null);
   const open = { async getJson() { return { ...page[0], state: 'open', merged_at: null, closed_at: null }; }, async *paginate() { yield* []; } };
   assert.equal(await readPull({ client: open, repo: 'o/r', number: 40, options, now }), null);
+});
+
+test('since lists newest first and stops at the first older pull request', async () => {
+  const log = [];
+  const items = await collect(options, log, undefined, new Date('2025-03-05T00:00:00Z'));
+  assert.equal(log[0].params.direction, 'desc');
+  assert.deepEqual(items.filter((i) => !i.remove).map((i) => i.sourceId), ['42']);
+  assert.ok(log.every((c) => !c.path.endsWith('/40/comments')), 'pull 40 is older than since and stops the listing before its details are fetched');
+});
+
+test('a bot pull request listed after since is a removal', async () => {
+  const items = await collect(options, [], undefined, new Date('2025-03-05T00:00:00Z'));
+  assert.deepEqual(items.find((i) => i.remove), { remove: true, provider: 'github', origin: 'o/r', source: 'pull', sourceId: '41' });
 });

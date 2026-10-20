@@ -27,7 +27,7 @@ function fakeClient(log = []) {
     },
   };
 }
-async function collect(options = { categories: ['general', 'q-a'], answers: true }, log = [], raw = undefined) { const out = []; for await (const i of readDiscussions({ client: fakeClient(log) as any, repo: 'o/r', options, raw })) out.push(i); return out; }
+async function collect(options = { categories: ['general', 'q-a'], answers: true }, log = [], raw = undefined, since = undefined) { const out = []; for await (const i of readDiscussions({ client: fakeClient(log) as any, repo: 'o/r', options, raw, since })) out.push(i); return out; }
 
 test('resolves category slugs, pages each category and yields body and answer chunks', async () => {
   const items = await collect();
@@ -66,4 +66,19 @@ test('records discussions in the raw store', async () => {
   assert.equal(record.payload.answer.bodyText, 'Disable the always-on sensor.');
   assert.equal(raw.count(), 2);
   raw.close();
+});
+
+test('since stops the discussion listing at the first older node', async () => {
+  const log = [];
+  const items = await collect({ categories: ['general'], answers: true }, log, undefined, new Date('2025-01-03T00:00:00Z'));
+  assert.deepEqual(items, []);
+  const pages = log.filter((c) => !c.query.includes('discussionCategories'));
+  assert.equal(pages.length, 1, 'discussion 7 is already older than since, so the second page is never requested');
+});
+
+test('since stops before paging when the last node of a page is older', async () => {
+  const log = [];
+  const items = await collect({ categories: ['general'], answers: true }, log, undefined, new Date('2024-06-01T00:00:00Z'));
+  assert.deepEqual(items.map((i) => i.sourceId), ['7']);
+  assert.equal(log.filter((c) => !c.query.includes('discussionCategories')).length, 2, 'page two is requested, its only node is older and ends the listing');
 });

@@ -1,7 +1,7 @@
 import { cleanIssueText } from '../../text/clean.ts';
 import { packText } from '../../text/chunk.ts';
 import type { PullsConfig } from '../../config/types.ts';
-import type { AuthorRole, IndexChunk, IndexItem, PaginatingClient } from '../types.ts';
+import type { AuthorRole, IndexChunk, IndexItem, PaginatingClient, ProviderItem } from '../types.ts';
 import type { RawStore } from '../../store/raw.ts';
 
 const MAINTAINER_ASSOCIATIONS = new Set(['OWNER', 'MEMBER', 'COLLABORATOR']);
@@ -132,12 +132,21 @@ function qualifies(pull: ApiPull, options: PullsConfig, cutoff: Date | null): bo
 
 export interface ReadPullsInput { client: PaginatingClient; repo: string; options: PullsConfig; now?: Date; raw?: RawStore; since?: Date }
 
-/** Reads closed pull requests, merged or not, with their maintainer review threads. */
-export async function* readPulls({ client, repo, options, now = new Date(), raw }: ReadPullsInput): AsyncGenerator<IndexItem> {
+/**
+ * Reads closed pull requests, merged or not, with their maintainer review
+ * threads. With `since`, the listing runs newest first and stops at the first
+ * pull request updated before it; a listed one that fails the filter is a removal.
+ */
+export async function* readPulls({ client, repo, options, now = new Date(), raw, since }: ReadPullsInput): AsyncGenerator<ProviderItem> {
   const cutoff = cutoffOf(options, now);
-  for await (const element of client.paginate(`/repos/${repo}/pulls`, { state: 'closed', per_page: 100, sort: 'updated', direction: 'asc' })) {
+  const params = { state: 'closed', per_page: 100, sort: 'updated', direction: since ? 'desc' : 'asc' };
+  for await (const element of client.paginate(`/repos/${repo}/pulls`, params)) {
     const pull = element as ApiPull;
-    if (!qualifies(pull, options, cutoff)) continue;
+    if (since && new Date(pull.updated_at) < since) return;
+    if (!qualifies(pull, options, cutoff)) {
+      if (since) yield { remove: true, provider: 'github', origin: repo, source: 'pull', sourceId: String(pull.number) };
+      continue;
+    }
     yield pullItem(pull, await pullDetails(client, repo, pull, options.reviews, raw), repo);
   }
 }

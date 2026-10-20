@@ -10,11 +10,13 @@ interface ApiRelease { tag_name: string; name: string | null; draft: boolean; pr
 export interface ReadReleasesInput { client: PaginatingClient; repo: string; options: ReleasesConfig; now?: Date; raw?: RawStore; since?: Date }
 
 /** Reads release notes: which version shipped what. */
-export async function* readReleases({ client, repo, options, now = new Date(), raw }: ReadReleasesInput): AsyncGenerator<IndexItem> {
+export async function* readReleases({ client, repo, options, now = new Date(), raw, since }: ReadReleasesInput): AsyncGenerator<IndexItem> {
   const cutoff = options.withinDays === undefined ? null : new Date(now.getTime() - options.withinDays * DAY_MS);
+  // Releases come newest first; with `since` the first older published release ends the listing.
   for await (const element of client.paginate(`/repos/${repo}/releases`, { per_page: 100 })) {
     const release = element as ApiRelease;
     if (release.draft || !release.published_at) continue;
+    if (since && new Date(release.published_at) < since) return;
     if (release.prerelease && !options.includePrereleases) continue;
     if (cutoff && new Date(release.published_at) < cutoff) continue;
     const title = release.name?.trim() ? `${release.tag_name} ${release.name.trim()}` : release.tag_name;

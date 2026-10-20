@@ -62,19 +62,24 @@ function toItem(node: Node, repo: string, answers: boolean): IndexItem {
 
 export interface ReadDiscussionsInput { client: PaginatingClient; repo: string; options: DiscussionsConfig; raw?: RawStore; since?: Date }
 
-/** Reads the discussions of the configured categories through GraphQL. */
-export async function* readDiscussions({ client, repo, options, raw }: ReadDiscussionsInput): AsyncGenerator<IndexItem> {
+/**
+ * Reads the discussions of the configured categories through GraphQL, newest
+ * update first. With `since`, a category stops at the first node updated before it.
+ */
+export async function* readDiscussions({ client, repo, options, raw, since }: ReadDiscussionsInput): AsyncGenerator<IndexItem> {
   if (!client.graphql) throw new Error('discussions need a GraphQL-capable client');
   const [owner, name] = repo.split('/');
   for (const category of await categoryIds(client, owner, name, options.categories)) {
     let after: string | null = null;
     do {
       const page: Page = await client.graphql<Page>(DISCUSSIONS_QUERY, { owner, name, categoryId: category.id, after, first: PAGE });
+      let stop = false;
       for (const node of page.repository.discussions.nodes) {
+        if (since && new Date(node.updatedAt) < since) { stop = true; break; }
         raw?.put({ provider: 'github', origin: repo, kind: 'discussion', id: String(node.number), updatedAt: node.updatedAt, payload: node });
         yield toItem(node, repo, options.answers);
       }
-      after = page.repository.discussions.pageInfo.hasNextPage ? page.repository.discussions.pageInfo.endCursor : null;
+      after = !stop && page.repository.discussions.pageInfo.hasNextPage ? page.repository.discussions.pageInfo.endCursor : null;
     } while (after);
   }
 }
