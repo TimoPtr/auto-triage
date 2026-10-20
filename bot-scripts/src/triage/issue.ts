@@ -1,0 +1,43 @@
+import type { GitHubClient } from '../providers/github/client.ts';
+
+const REPOSITORY = /^[\w.-]+\/[\w.-]+$/;
+
+export interface TriageIssue {
+  number: number;
+  title: string;
+  body: string;
+  labels: string[];
+  createdAt: string;
+  /** `User`, `Bot`, or whatever the API reports for the author. */
+  authorType: string;
+  isPullRequest: boolean;
+  state: string;
+}
+
+interface ApiIssue {
+  number: number;
+  title: string;
+  body?: string | null;
+  labels?: { name: string }[];
+  created_at: string;
+  user?: { type?: string } | null;
+  pull_request?: unknown;
+  state: string;
+}
+
+/** Reads one issue to triage; the repository and number are checked before any request. */
+export async function fetchIssue(client: Pick<GitHubClient, 'getJson'>, repo: string, number: number): Promise<TriageIssue> {
+  if (!REPOSITORY.test(repo)) throw new Error(`repository must be owner/name, got ${repo}`);
+  if (!Number.isInteger(number) || number <= 0) throw new Error(`issue number must be a positive integer, got ${number}`);
+  const issue = await client.getJson<ApiIssue>(`repos/${repo}/issues/${number}`);
+  return {
+    number: issue.number,
+    title: issue.title ?? '',
+    body: issue.body ?? '',
+    labels: (issue.labels ?? []).map((l) => l.name),
+    createdAt: issue.created_at,
+    authorType: issue.user?.type ?? 'User',
+    isPullRequest: issue.pull_request !== undefined && issue.pull_request !== null,
+    state: issue.state,
+  };
+}
