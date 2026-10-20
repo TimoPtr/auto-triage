@@ -1,7 +1,7 @@
 import { htmlToText } from './html.ts';
 import { packText } from '../../text/chunk.ts';
 import type { DiscourseSiteConfig } from '../../config/types.ts';
-import type { IndexChunk, IndexItem } from '../types.ts';
+import type { IndexChunk, IndexItem, ProviderItem } from '../types.ts';
 import type { DiscourseClient } from './client.ts';
 import type { RawStore } from '../../store/raw.ts';
 
@@ -23,13 +23,20 @@ async function resolveCategories(client: DiscourseClient, wanted: string[]): Pro
   return wanted.map((w) => bySlug.get(w) ?? byId.get(w)!);
 }
 
-/** Pages a category list until the site stops offering a next page or repeats one. */
-async function* listTopics(client: DiscourseClient, category: SiteCategory): AsyncGenerator<ListTopic> {
+/**
+ * Pages a category list (newest activity first) until the site stops offering
+ * a next page or repeats one. With `since`, a page whose topics all had their
+ * last post before it ends the listing; a pinned old topic at the top of a
+ * page does not, since newer topics follow it.
+ */
+async function* listTopics(client: DiscourseClient, category: SiteCategory, since?: Date): AsyncGenerator<ListTopic> {
   let page = 0;
   let previousNext: string | undefined;
   for (;;) {
     const list = await client.getJson<TopicList>(`/c/${category.slug}/${category.id}.json?page=${page}`);
-    yield* list.topic_list.topics;
+    const topics = list.topic_list.topics;
+    yield* since ? topics.filter((t) => new Date(t.last_posted_at) >= since) : topics;
+    if (since && topics.every((t) => new Date(t.last_posted_at) < since)) return;
     const next = list.topic_list.more_topics_url;
     if (!next || next === previousNext) return;
     previousNext = next;
@@ -78,14 +85,17 @@ function toItem(host: string, category: SiteCategory, listed: ListTopic, chunks:
 export interface ReadTopicsInput { client: DiscourseClient; host: string; options: DiscourseSiteConfig; now?: Date; raw?: RawStore; since?: Date }
 
 /** Reads the topics of the configured categories as forum items with their accepted answer. */
-export async function* readTopics({ client, host, options, now = new Date(), raw }: ReadTopicsInput): AsyncGenerator<IndexItem> {
+export async function* readTopics({ client, host, options, now = new Date(), raw, since }: ReadTopicsInput): AsyncGenerator<ProviderItem> {
   const cutoff = options.closedWithinDays === undefined ? null : new Date(now.getTime() - options.closedWithinDays * DAY_MS);
   const seen = new Set<number>();
   for (const category of await resolveCategories(client, options.categories)) {
-    for await (const listed of listTopics(client, category)) {
+    for await (const listed of listTopics(client, category, since)) {
       if (seen.has(listed.id)) continue;
       seen.add(listed.id);
-      if (!keep(listed, options, cutoff)) continue;
+      if (!keep(listed, options, cutoff)) {
+        if (since) yield { remove: true, provider: 'discourse', origin: host, source: 'forum', sourceId: String(listed.id) };
+        continue;
+      }
       const topic = await loadTopic(client, host, listed, raw);
       const first = topic.post_stream.posts[0];
       const chunks: IndexChunk[] = [];

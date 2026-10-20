@@ -35,7 +35,7 @@ function client(log = []) {
   return createDiscourseClient({ host: 'community.example', fetchImpl: fakeFetch(log), sleepImpl: async (ms) => { sleeps.push(ms); clock += ms; }, nowImpl: () => clock, requestsPerSecond: 4 });
 }
 const base: DiscourseSiteConfig = { categories: ['android-companion'], tags: [], solvedOnly: false, acceptedAnswers: true, requestsPerSecond: 4 };
-async function collect(options = base, log = [], raw = undefined) { const out = []; for await (const i of readTopics({ client: client(log), host: 'community.example', options, now: new Date('2026-10-15T00:00:00Z'), raw })) out.push(i); return out; }
+async function collect(options = base, log = [], raw = undefined, since = undefined) { const out = []; for await (const i of readTopics({ client: client(log), host: 'community.example', options, now: new Date('2026-10-15T00:00:00Z'), raw, since })) out.push(i); return out; }
 
 test('resolves the category, pages the list and yields body and accepted answer', async () => {
   const items = await collect();
@@ -118,4 +118,25 @@ test('an accepted answer outside the first page of posts is fetched by number', 
   const answer = out[0].chunks.find((ch) => ch.kind === 'answer');
   assert.equal(answer?.text, 'Late answer.');
   assert.equal(answer?.createdAt, '2026-03-04T00:00:00Z');
+});
+
+test('since stops paging after the first page whose topics are all older', async () => {
+  const log = [];
+  const items = await collect(base, log, undefined, new Date('2026-03-01T00:00:00Z'));
+  assert.deepEqual(items.filter((i) => !i.remove).map((i) => i.sourceId), ['100']);
+  assert.equal(log.filter((p) => p.includes('page=')).length, 2, 'page 0 still had a newer topic, page 1 is all older and ends the listing');
+  assert.ok(!log.includes('/t/101.json') && !log.includes('/t/102.json'), 'older topics are neither fetched nor yielded');
+});
+
+test('since stops at a page that is entirely older without requesting the next one', async () => {
+  const log = [];
+  const items = await collect(base, log, undefined, new Date('2026-04-01T00:00:00Z'));
+  assert.deepEqual(items, []);
+  assert.equal(log.filter((p) => p.includes('page=')).length, 1);
+});
+
+test('a listed topic that stopped qualifying is a removal', async () => {
+  const items = await collect({ ...base, solvedOnly: true }, [], undefined, new Date('2026-01-01T00:00:00Z'));
+  assert.deepEqual(items.filter((i) => i.remove).map((i) => i.sourceId), ['101']);
+  assert.deepEqual(items.find((i) => i.remove), { remove: true, provider: 'discourse', origin: 'community.example', source: 'forum', sourceId: '101' });
 });
