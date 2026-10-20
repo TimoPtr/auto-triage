@@ -270,6 +270,10 @@ What the pieces do:
   another model, `missing`), `source` (`cache`, `artifact`, `none`), `age-days`, `items`, `chunks`.
 - `actions/publish-index` saves the index and raw store to the cache under a run-scoped key and
   uploads them as artifacts with 30 day retention; it refuses an unusable index.
+- After a successful publish, `build-index.yml` runs the test split of the consumer's eval cases
+  (`evalCases` in the config) against the new index, writes the summary to the job summary and
+  uploads the run as the `eval-<slug>` artifact. A consumer without cases skips this with a line in
+  the log.
 - `actions/report-index-status` writes the job summary and maintains the tracking issue.
 - `build-index.yml` ties them together; `append-on-close.yml` upserts one item in place;
   `selfcheck.yml` validates a config, for pull requests that touch it.

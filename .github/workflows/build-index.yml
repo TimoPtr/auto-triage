@@ -117,6 +117,23 @@ jobs:
           config: ${{ inputs.config }}
           index-path: ${{ steps.previous.outputs.index-path }}
           raw-path: ${{ steps.previous.outputs.raw-path }}
+      # The test split of the consumer's eval cases, when it has any, scored against the index just built.
+      - id: eval
+        if: success()
+        env:
+          CONFIG: ${{ inputs.config }}
+          INDEX: ${{ steps.previous.outputs.index-path }}
+        run: |
+          set -euo pipefail
+          node "$BOT_SCRIPTS_DIR/src/cli/run-eval.ts" --config "$CONFIG" --index "$INDEX" --split test \
+            --out .knowledge-bot/eval --model-cache "$KB_MODEL_CACHE"
+          if [ -f .knowledge-bot/eval/summary.md ]; then cat .knowledge-bot/eval/summary.md >> "$GITHUB_STEP_SUMMARY"; fi
+      - if: success() && hashFiles('.knowledge-bot/eval/summary.json') != ''
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: eval-${{ inputs.slug }}
+          path: .knowledge-bot/eval
+          retention-days: 30
       # A build that died on the rate limit keeps its raw store progress for the next run.
       - if: failure() && steps.build.outcome == 'failure'
         uses: ./.knowledge-bot/auto-triage/actions/publish-index

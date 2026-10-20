@@ -1,0 +1,1 @@
+{"id":"cur-raw-store","relation":"curated","split":"test","query":{"type":"text","text":"raw source store for the benchmark"},"expected":[{"type":"docs","url":"https://github.com/TimoPtr/auto-triage/blob/main/docs/superpowers/plans/2026-10-15-phase1b-providers"}],"expectedTier":"high","labelSource":"manual","verified":true}
