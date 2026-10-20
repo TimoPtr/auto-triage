@@ -46,7 +46,8 @@ const raw = values.raw ? openRawStore(values.raw, { recreateOnMismatch: true, lo
 const providers = createProviders(config, { githubToken: process.env.GITHUB_TOKEN, checkouts, raw });
 
 try {
-  const stats = await buildIndex({ config, configHash, outPath: values.out, previousPath: values.previous, embedder, providers, log });
+  const plan = { mode: 'full' as const, since: null, reason: 'full build', fullBuiltAt: new Date().toISOString() };
+  const stats = await buildIndex({ config, configHash, outPath: values.out, previousPath: values.previous, embedder, providers, plan, log });
   if (raw) log(`raw store: ${raw.count()} records`);
   console.log(JSON.stringify(stats));
 } finally {

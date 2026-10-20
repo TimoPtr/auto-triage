@@ -6,6 +6,7 @@ import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { loadConfig } from '../../src/config/load.ts';
 import { buildIndex } from '../../src/index/build.ts';
+import type { BuildPlan } from '../../src/index/plan.ts';
 import { createProviders } from '../../src/providers/registry.ts';
 import { openDatabase, readMeta } from '../../src/store/db.ts';
 import { openRawStore } from '../../src/store/raw.ts';
@@ -34,6 +35,7 @@ const fakeFetch = async (url, init) => {
   return new Response('nope', { status: 404 });
 };
 
+const plan: BuildPlan = { mode: 'full', since: null, reason: 'test', fullBuiltAt: '2026-10-15T00:00:00Z' };
 const embedder = { modelKey: 'fake@1@q8@cls', dimensions: 4, async embed(texts) { return texts.map(() => Float32Array.from([1, 0, 0, 0])); } };
 
 test('builds an index from the android fixture config with issues and docs', async () => {
@@ -48,7 +50,7 @@ test('builds an index from the android fixture config with issues and docs', asy
   config.providers.github['home-assistant/contributors.home-assistant.io'].docs.path = 'docs/android';
   const providers = createProviders(config, { githubToken: 't', fetchImpl: fakeFetch, checkouts, now: new Date('2026-10-15T00:00:00Z') });
   const out = join(tmp, 'knowledge.sqlite');
-  const stats = await buildIndex({ config, configHash: 'abc', outPath: out, embedder, providers });
+  const stats = await buildIndex({ config, configHash: 'abc', outPath: out, embedder, providers, plan });
   // two indexable issues (one closed in the window, one long-standing open), four docs fixtures under docs/ (evil.md included), two under docs/android
   assert.equal(stats.items, 2 + 4 + 2);
   const db = openDatabase(out, { readOnly: true });
@@ -64,7 +66,7 @@ test('builds an index from the android fixture config with issues and docs', asy
 test('fails when a configured provider has no checkout for a docs repository', async () => {
   const config = loadConfig(join(fixtures, 'config/android.yaml'));
   const providers = createProviders(config, { githubToken: 't', fetchImpl: fakeFetch, checkouts: {}, now: new Date() });
-  await assert.rejects(() => buildIndex({ config, configHash: 'x', outPath: join(tmp, 'never.sqlite'), embedder, providers }), /checkout/);
+  await assert.rejects(() => buildIndex({ config, configHash: 'x', outPath: join(tmp, 'never.sqlite'), embedder, providers, plan }), /checkout/);
 });
 
 test('wires every configured source kind and the discourse provider', async () => {
@@ -78,7 +80,7 @@ test('wires every configured source kind and the discourse provider', async () =
   const raw = openRawStore(join(tmp, 'wired.raw.sqlite'));
   const providers = createProviders(config, { githubToken: 't', fetchImpl: fakeFetch, sleepImpl: async () => {}, checkouts, now: new Date('2026-10-15T00:00:00Z'), raw });
   assert.deepEqual(providers.map((p) => p.name), ['github', 'discourse']);
-  const stats = await buildIndex({ config, configHash: 'w', outPath: join(tmp, 'wired.sqlite'), embedder, providers });
+  const stats = await buildIndex({ config, configHash: 'w', outPath: join(tmp, 'wired.sqlite'), embedder, providers, plan });
   const db = openDatabase(join(tmp, 'wired.sqlite'), { readOnly: true });
   const sources = db.prepare('SELECT source, count(*) c FROM items GROUP BY source ORDER BY source').all().map((r) => ({ ...r }));
   db.close();
@@ -98,7 +100,7 @@ test('logs the item count and elapsed time of every provider and of the whole bu
   const checkouts = { 'home-assistant/companion.home-assistant': fixtures, 'home-assistant/contributors.home-assistant.io': fixtures };
   const providers = createProviders(config, { githubToken: 't', fetchImpl: fakeFetch, checkouts, now: new Date('2026-10-15T00:00:00Z') });
   const lines = [];
-  await buildIndex({ config, configHash: 't', outPath: join(tmp, 'timed.sqlite'), embedder, providers, log: (l) => lines.push(l) });
+  await buildIndex({ config, configHash: 't', outPath: join(tmp, 'timed.sqlite'), embedder, providers, plan, log: (l) => lines.push(l) });
   assert.ok(lines.some((l) => /^github: 8 items in \d+(\.\d+)?s$/.test(l)), lines.join('\n'));
   assert.ok(lines.some((l) => /^build finished in \d+(\.\d+)?s$/.test(l)), lines.join('\n'));
 });
