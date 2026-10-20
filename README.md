@@ -83,9 +83,16 @@ so expect about two hours for the very first android build. Every later build re
 store (no comment, review or topic request for an unchanged item) and the previous vectors, and
 takes the time of the listings plus the changed items.
 
+Measured on 2026-10-20 with the same setup, a full raw store and the previous index to reuse:
+
+| Build | What it read | Wall time |
+|---|---|---|
+| Full rebuild (`--full`, or every 7 days) | every listing, every checkout; 24 chunks embedded, 41 433 reused | 3 min 16 s |
+| Incremental (the nightly default) | issues, pull requests, discussions, releases and forum topics changed since the previous build (none that morning), the checkouts in full; 0 chunks embedded, 6376 reused | 17 s |
+
 The Actions `GITHUB_TOKEN` only has 1000 requests per hour, so the first fill of a large consumer
-converges over a few nightly runs (see "Run it in GitHub Actions"); after that the nightly job stays
-incremental.
+converges over a few nightly runs (see "Run it in GitHub Actions"); after that the nightly job is
+incremental and its cost follows the number of changed items, not the size of the repository.
 
 ### Raw store
 
@@ -175,9 +182,19 @@ What the pieces do:
 - `actions/publish-index` saves the index and raw store to the cache under a run-scoped key and
   uploads them as artifacts with 30 day retention; it refuses an unusable index.
 - `actions/report-index-status` writes the job summary and maintains the tracking issue.
-- `build-index.yml` ties them together with a full rebuild (`--previous` reuses the vectors of
-  unchanged chunks); `append-on-close.yml` upserts one item in place; `selfcheck.yml` validates a
-  config, for pull requests that touch it.
+- `build-index.yml` ties them together; `append-on-close.yml` upserts one item in place;
+  `selfcheck.yml` validates a config, for pull requests that touch it.
+
+How a build decides what to read: with a usable restored index, the build is incremental. It starts
+from a copy of that index and asks each source only for what changed since the index was started
+(one hour of overlap): issues through the API's `since`, pull requests, discussions, releases and
+forum categories listed newest first until the first older item. Docs, code and files are re-read
+from the checkouts every time, which takes seconds and is how a deleted page or file leaves the
+index. A listed item that no longer qualifies (an issue reopened when only closed ones are indexed,
+a topic moved out of the category) is removed. What the sources cannot report incrementally, such
+as a deleted or transferred issue, waits for the full rebuild, which happens when the last one is 7
+or more days old, when the config changed, when no usable index exists, or when the `full` input
+of `build-index.yml` is set (the android caller exposes it on `workflow_dispatch`).
 
 First fill of a large repository: the android fill is about 11 000 API requests and the workflow
 token allows 1000 per hour, so the first nightly runs stop on the rate limit before the index is

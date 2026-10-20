@@ -7,6 +7,9 @@ import { createEmbedder } from '../embed/embedder.ts';
 import { createProviders } from '../providers/registry.ts';
 import { buildIndex } from '../index/build.ts';
 import { openRawStore } from '../store/raw.ts';
+import { openDatabase, readMeta } from '../store/db.ts';
+import { indexStatus } from '../index/status.ts';
+import { planBuild } from '../index/plan.ts';
 
 const { values } = parseArgs({
   options: {
@@ -17,11 +20,12 @@ const { values } = parseArgs({
     checkout: { type: 'string', multiple: true, default: [] },
     self: { type: 'string' },
     'model-cache': { type: 'string', default: '.model-cache' },
+    full: { type: 'boolean', default: false },
   },
 });
 
 if (!values.config || !values.out) {
-  console.error('usage: build --config <knowledge-bot.yaml> --out <knowledge.sqlite> [--previous <sqlite>] [--raw <sqlite>] [--self <dir>] [--checkout owner/repo=<dir>]...');
+  console.error('usage: build --config <knowledge-bot.yaml> --out <knowledge.sqlite> [--previous <sqlite>] [--full] [--raw <sqlite>] [--self <dir>] [--checkout owner/repo=<dir>]...');
   process.exit(2);
 }
 
@@ -41,12 +45,23 @@ if (values.self) {
 const configHash = createHash('sha256').update(readFileSync(values.config)).digest('hex').slice(0, 12);
 const embedder = createEmbedder(config.embedding, { cacheDir: values['model-cache'] });
 const log = (line: string) => console.log(line);
+
+/** Meta of the previous index when this config can serve it, else null (a full build follows). */
+function previousMeta(previousPath: string | undefined, cfg: typeof config): Record<string, string> | null {
+  if (!previousPath || !indexStatus({ indexPath: previousPath, config: cfg }).usable) return null;
+  const db = openDatabase(previousPath, { readOnly: true });
+  try {
+    return readMeta(db);
+  } finally {
+    db.close();
+  }
+}
 // A raw store from another schema version is moved aside: a build must not stay wedged on a restored file.
 const raw = values.raw ? openRawStore(values.raw, { recreateOnMismatch: true, log }) : undefined;
 const providers = createProviders(config, { githubToken: process.env.GITHUB_TOKEN, checkouts, raw });
 
 try {
-  const plan = { mode: 'full' as const, since: null, reason: 'full build', fullBuiltAt: new Date().toISOString() };
+  const plan = planBuild({ previousMeta: previousMeta(values.previous, config), configHash, now: new Date(), full: values.full });
   const stats = await buildIndex({ config, configHash, outPath: values.out, previousPath: values.previous, embedder, providers, plan, log });
   if (raw) log(`raw store: ${raw.count()} records`);
   console.log(JSON.stringify(stats));

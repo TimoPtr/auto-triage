@@ -18,6 +18,9 @@ export interface IndexStatus {
   status: IndexHealth;
   builtAt: string | null;
   ageDays: number | null;
+  /** When the last full build started; null for an index built before incremental builds existed. */
+  fullBuiltAt: string | null;
+  fullAgeDays: number | null;
   items: number;
   chunks: number;
   formatVersion: number;
@@ -29,7 +32,7 @@ export interface IndexStatusInput { indexPath: string; config: Config; now?: Dat
 export interface Versions { formatVersion: number; schemaVersion: number; rawSchemaVersion: number }
 
 const missing = (): IndexStatus => ({
-  found: false, usable: false, reason: 'no index file', status: 'missing', builtAt: null, ageDays: null,
+  found: false, usable: false, reason: 'no index file', status: 'missing', builtAt: null, ageDays: null, fullBuiltAt: null, fullAgeDays: null,
   items: 0, chunks: 0, formatVersion: FORMAT_VERSION, schemaVersion: SCHEMA_VERSION,
 });
 const unusable = (reason: string): IndexStatus => ({ ...missing(), found: true, reason, status: 'unusable' });
@@ -71,9 +74,11 @@ export function indexStatus({ indexPath, config, now = new Date(), freshDays = D
   const { meta } = read;
   const reason = blocker(meta, config);
   const builtAt = meta.built_at ?? null;
-  const ageDays = builtAt ? (now.getTime() - Date.parse(builtAt)) / DAY_MS : null;
+  const fullBuiltAt = meta.full_built_at || null;
+  const age = (iso: string | null) => (iso ? (now.getTime() - Date.parse(iso)) / DAY_MS : null);
+  const ageDays = age(builtAt);
   const base = {
-    found: true, builtAt, ageDays, items: Number(meta.item_count ?? 0), chunks: Number(meta.chunk_count ?? 0),
+    found: true, builtAt, ageDays, fullBuiltAt, fullAgeDays: age(fullBuiltAt), items: Number(meta.item_count ?? 0), chunks: Number(meta.chunk_count ?? 0),
     formatVersion: Number(meta.format_version ?? FORMAT_VERSION), schemaVersion: Number(meta.schema_version ?? SCHEMA_VERSION),
   };
   if (reason) return { ...base, usable: false, reason, status: 'unusable' };

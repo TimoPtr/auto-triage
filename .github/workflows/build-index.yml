@@ -24,6 +24,10 @@ on:  # yamllint disable-line rule:truthy
         description: Keep a tracking issue open while the index is stale, unusable or missing.
         type: boolean
         default: true
+      full:
+        description: Force a full rebuild instead of an incremental build from the restored index.
+        type: boolean
+        default: false
 
 permissions: {}
 
@@ -89,11 +93,13 @@ jobs:
           RAW: ${{ steps.previous.outputs.raw-path }}
           PREVIOUS_USABLE: ${{ steps.previous.outputs.usable }}
           TIMEOUT_MINUTES: ${{ inputs.timeout-minutes }}
+          FULL: ${{ inputs.full }}
         run: |
           set -euo pipefail
           mapfile -t args < .knowledge-bot/checkout-args
           previous=()
           if [ "$PREVIOUS_USABLE" = "true" ]; then cp "$INDEX" "$INDEX.previous"; previous=(--previous "$INDEX.previous"); fi
+          if [ "$FULL" = "true" ]; then previous+=(--full); fi
           # Stop before the job timeout: a step that fails still runs the failure steps, a cancelled job does not.
           # The margin is measured from the job start, so the setup steps do not eat into it.
           margin=20

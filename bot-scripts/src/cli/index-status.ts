@@ -37,6 +37,7 @@ if (import.meta.url === pathToFileURL(process.argv[1] ?? '').href) {
     writeOutputs({
       found: status.found, usable: status.usable, status: status.status, reason: status.reason, 'built-at': status.builtAt,
       'age-days': status.ageDays === null ? null : status.ageDays.toFixed(2), items: status.items, chunks: status.chunks,
+      'full-built-at': status.fullBuiltAt, 'full-age-days': status.fullAgeDays === null ? null : status.fullAgeDays.toFixed(2),
       'format-version': status.formatVersion, 'schema-version': status.schemaVersion,
     });
   }

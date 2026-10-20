@@ -65,3 +65,13 @@ test('writeOutputs appends key=value lines to the output file', async () => {
   writeOutputs({ status: 'fresh', 'age-days': 0.5, reason: null }, out);
   assert.equal(readFileSync(out, 'utf8'), 'status=fresh\nage-days=0.5\nreason=\n');
 });
+
+test('reports when the last full build happened', async () => {
+  const path = join(tmp, 'full.sqlite');
+  async function* items() { yield item; }
+  await writeIndex({ items: items(), embedder, outPath: path, meta: { full_built_at: '2026-10-15T03:00:00Z' } });
+  const s = indexStatus({ indexPath: path, config, now: new Date('2026-10-20T03:00:00Z') });
+  assert.equal(s.fullBuiltAt, '2026-10-15T03:00:00Z');
+  assert.ok(s.fullAgeDays !== null && Math.abs(s.fullAgeDays - 5) < 0.01);
+  assert.equal(indexStatus({ indexPath, config }).fullBuiltAt, null);
+});
