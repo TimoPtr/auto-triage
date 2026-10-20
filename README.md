@@ -13,6 +13,8 @@ callers. Design: the knowledge bot spec in `home-assistant/android`,
   parameter properties, decorators) is used.
 - `bot-scripts/src/triage/` the deterministic halves of the triage workflow: the gate and handoff
   builder, the verdict parser and the comment renderer.
+- `bot-scripts/src/feedback/` the quality loop: reactions, replies and outcomes of the bot comments,
+  the suppression list and the digest.
 - `workflows/` gh-aw workflow templates a consumer installs with `gh aw add`: `triage.md`.
 - `schemas/` JSON Schema for the config, the eval cases, the handoff and the index metadata.
 - `docs/superpowers/plans/` implementation plans, one per phase.
@@ -426,3 +428,53 @@ verdict):
 Cost: one model run per triaged issue, bounded by five turns and fifteen minutes; the gate keeps
 pull requests, bot issues and low-similarity issues from reaching the model. The `template` job of
 the test workflow compiles the template with the pinned gh-aw version on every change.
+
+## Quality loop
+
+The nightly build closes the loop on the triage comments; a consumer that calls `build-index.yml`
+gets all of it without changes.
+
+**Feedback.** After a successful publish, `collect-feedback` reads the raw store and finds every
+bot comment by its marker (posted by a Bot account, well-formed tier and run id). For each it keeps
+the 👍 and 👎 counts, the first reply by a person (role from the API association: reporter,
+maintainer or user; text cut to 500 characters) and the outcome rules of the spec:
+
+- `recheck`: a later bot comment exists on the issue (the `ai-recheck` label was used);
+- `hit` / `miss`: the issue was closed as a duplicate (state reason or label) and the target, taken
+  from the benchmark's links record when present or else from a maintainer's "duplicate of #n"
+  comment after the bot's, was or was not among the suggested duplicates;
+- `answered`: the reporter closed the issue within 7 days of the comment, not as a duplicate;
+- `dismissed`: a 👎, or a miss while duplicates were suggested.
+
+Reactions do not bump an issue's `updated_at`, so the incremental build would only see them on the
+weekly full rebuild; the step re-reads the reactions of every bot comment younger than 90 days
+through the API with the workflow token. The result is `feedback.json`
+(`{ version, repository, generatedAt, comments, suppressed }`), saved to the Actions cache under
+`<slug>-feedback-v1-<run id>-<attempt>` and uploaded as the `feedback-<slug>` artifact (30 days).
+`report-feedback` keeps one digest issue, `Knowledge bot <slug>: feedback digest` (label
+`knowledge-bot`): totals per tier, reactions, outcomes, the suppressed count and a table of the
+20 newest comments. It is created once a bot comment exists and its body is replaced every night;
+reply text never reaches it. `tracking: false` on the caller turns the issue off.
+
+**Suppression.** Issues whose bot comment was downvoted or dismissed are the suppression list. The
+triage template restores the newest `feedback.json` from the cache in pre-activation (a missing,
+unreadable or older file is ignored with a log line). When a retrieved excerpt is one of those
+issues, of the same repository, at or above `triage.suppressSimilarity` (default 0.8, a tuning
+item), the handoff marks a demotion and `render-verdict` lowers the tier by one: high becomes
+medium, medium becomes low. The run summary names the suppressed issue.
+
+**Eval regression.** When the build evaluated the test split, it restores the previous nightly
+`eval-<slug>` artifact (directory mode of `restore-artifact.sh`: default-branch runs only, plain
+regular files only), runs `compare-eval` on the two `cases.jsonl` and `report-eval-status` writes
+the paired delta of recall at 5 with its interval to the summary. A regression (drop above 5 points
+with the interval excluding zero) opens or comments the tracking issue `Knowledge eval <slug>:
+regression`; a clean comparison closes it. A build without a previous artifact or without eval
+cases says so and stays green.
+
+Local dry run of the collection, from `bot-scripts/` with a raw store:
+
+    npm run -s collect-feedback -- --config ../../android/.github/knowledge-bot.yaml \
+      --raw knowledge-android.raw.sqlite --repo home-assistant/android --out eval-out/feedback
+    cat eval-out/feedback/digest.md   # only once a bot comment exists
+
+Add `--github` with `GH_TOKEN` to refresh the reactions, as the nightly step does.
