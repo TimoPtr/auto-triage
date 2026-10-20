@@ -194,15 +194,17 @@ First run on 2026-10-20, on the index of the same day (bge-small-en-v1.5 q8, 921
 chunks), after the hand check of 30 labels and the three rule fixes it led to. Mined cases: 324
 docs, 259 duplicate (76 from the timeline, 183 from comments), 743 fixed-by, 8 forum, 591
 negatives; 1925 in all, 392 in the test split. Mining took 107 GraphQL requests for the links.
+The harness ages candidates as of the case's own date, so an old case is scored as the bot would
+have scored it then.
 
 | run | split | positives | recall@5 | MRR | wall time |
 | --- | --- | --- | --- | --- | --- |
-| oracle (expected item's own text) | all | 1326 | 98.6 | 0.852 | 298 s |
+| oracle (expected item's own text) | all | 1326 | 99.5 | 0.988 | 278 s |
 | null (random ranking) | all | 1326 | 0.2 | 0.001 | 11 s |
-| production | test | 282 | 30.9 | 0.195 | 90 s |
-| production | validation | 255 | 29.8 | 0.204 | 82 s |
+| production | test | 282 | 32.6 | 0.212 | 87 s |
+| production | validation | 255 | 30.6 | 0.213 | 80 s |
 
-Production on the test split by relation: duplicate 47.3, docs 30.4, fixed-by 24.8 (recall at 5;
+Production on the test split by relation: duplicate 52.7, docs 21.7, fixed-by 29.9 (recall at 5;
 the one forum case hit). Errors: one docs page renamed since the maintainer linked it. The gate
 sweep on the test split shows that every negative scores above 0.70 with this model, so the
 config's `minSimilarity` of 0.35 filters nothing; the trade-off starts near 0.85 (precision 75,
@@ -216,18 +218,18 @@ offline from the raw store on a MacBook (CPU, q8), every chunk embedded:
 
 | model | dims | build | chunks/s | recall@5 | MRR |
 | --- | --- | --- | --- | --- | --- |
-| all-MiniLM-L6-v2 | 384 | 5 min 6 s | 135 | 29.0 | 0.190 |
-| bge-small-en-v1.5 (default) | 384 | 8 min 34 s | 81 | 30.6 | 0.203 |
-| snowflake-arctic-embed-s | 384 | 8 min 57 s | 77 | 34.9 | 0.215 |
-| nomic-embed-text-v1.5 | 768 | 31 min 23 s | 22 | 29.8 | 0.186 |
-| embeddinggemma-300m | 768 | 30 min 34 s | 23 | 28.6 | 0.192 |
+| all-MiniLM-L6-v2 | 384 | 5 min 6 s | 135 | 29.0 | 0.202 |
+| bge-small-en-v1.5 (default) | 384 | 8 min 34 s | 81 | 30.6 | 0.213 |
+| snowflake-arctic-embed-s | 384 | 8 min 57 s | 77 | 34.1 | 0.227 |
+| nomic-embed-text-v1.5 | 768 | 31 min 23 s | 22 | 31.8 | 0.207 |
+| embeddinggemma-300m | 768 | 30 min 34 s | 23 | 31.0 | 0.199 |
 
-The two 768-dimension models cost four times the build for no gain. Arctic-embed-s is the only
-candidate ahead of the default: paired against bge-small it gains 4.3 points on validation
-(95 percent interval minus 0.8 to 9.0) and 5.7 on test (1.8 to 9.6; 36.9 against 31.2, with docs
-42.0 against 30.4 and duplicate 54.5 against 47.3). The validation interval includes zero, so by
-the rule above the default stays bge-small; arctic-embed-s is the candidate to re-run once the
-case set has grown, and the switch is one `embedding` block in the consumer config.
+The two 768-dimension models cost four times the build for a point or less. Arctic-embed-s is the
+only candidate clearly ahead of the default: paired against bge-small it gains 3.5 points on
+validation (95 percent interval minus 0.8 to 7.8) and 5.7 on test (2.1 to 9.2; 38.7 against 33.0,
+with docs 30.4 against 21.7 and duplicate 58.2 against 52.7). The validation interval includes
+zero, so by the rule above the default stays bge-small; arctic-embed-s is the candidate to re-run
+once the case set has grown, and the switch is one `embedding` block in the consumer config.
 
 ## Run it in GitHub Actions
 
