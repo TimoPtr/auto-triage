@@ -1,0 +1,60 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://github.com/home-assistant/auto-triage/schemas/eval-case.json",
+  "title": "Knowledge bot benchmark case",
+  "description": "One line of a cases .jsonl file: a query, what the retrieval should rank for it, and where the label came from.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["id", "relation", "split", "query", "expected", "expectedTier", "labelSource", "verified"],
+  "properties": {
+    "id": { "type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]*$" },
+    "relation": { "enum": ["duplicate", "fixed-by", "docs", "forum", "negative", "curated"] },
+    "split": { "enum": ["train", "validation", "test"] },
+    "query": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["type", "number"],
+          "properties": {
+            "type": { "enum": ["issue", "pull", "discussion", "forum"] },
+            "number": { "type": "integer", "minimum": 1 },
+            "origin": { "type": "string", "minLength": 1 },
+            "asOf": { "type": "string", "format": "date-time" }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["type", "text"],
+          "properties": {
+            "type": { "const": "text" },
+            "text": { "type": "string", "minLength": 1 },
+            "asOf": { "type": "string", "format": "date-time" }
+          }
+        }
+      ]
+    },
+    "expected": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["type"],
+        "anyOf": [
+          { "properties": { "number": { "type": "integer" } }, "required": ["number"] },
+          { "properties": { "url": { "type": "string" } }, "required": ["url"] }
+        ],
+        "properties": {
+          "type": { "enum": ["docs", "issue", "pull", "discussion", "release", "forum", "code", "file"] },
+          "number": { "type": "integer", "minimum": 1 },
+          "url": { "type": "string", "format": "uri" },
+          "origin": { "type": "string", "minLength": 1 }
+        }
+      }
+    },
+    "expectedTier": { "enum": ["high", "medium", "low"] },
+    "labelSource": { "type": "string", "minLength": 1 },
+    "verified": { "type": "boolean" }
+  }
+}
