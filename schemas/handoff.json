@@ -1,0 +1,87 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://home-assistant.io/auto-triage/handoff.json",
+  "title": "Triage handoff: what the agent sees",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["version", "product", "repository", "issue", "excerpts", "thresholds", "retrieval"],
+  "properties": {
+    "version": { "const": 1 },
+    "product": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "slug"],
+      "properties": { "name": { "type": "string" }, "slug": { "type": "string" } }
+    },
+    "repository": { "type": "string", "pattern": "^[\\w.-]+/[\\w.-]+$" },
+    "issue": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["number", "title", "body", "logs", "labels", "createdAt"],
+      "properties": {
+        "number": { "type": "integer", "minimum": 1 },
+        "title": { "type": "string" },
+        "body": { "type": "string" },
+        "logs": { "type": ["string", "null"] },
+        "labels": { "type": "array", "items": { "type": "string" } },
+        "createdAt": { "type": "string" }
+      }
+    },
+    "excerpts": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "source", "origin", "url", "title", "heading", "date", "audience", "text", "outcome", "scores"],
+        "properties": {
+          "id": { "type": "integer", "minimum": 0 },
+          "source": { "type": "string" },
+          "origin": { "type": "string" },
+          "url": { "type": "string", "format": "uri" },
+          "title": { "type": "string" },
+          "heading": { "type": ["string", "null"] },
+          "date": { "type": "string" },
+          "audience": { "enum": ["user", "developer", "maintainer"] },
+          "text": { "type": "string" },
+          "outcome": {
+            "type": ["object", "null"],
+            "additionalProperties": false,
+            "required": ["state", "reason", "fixedBy", "solved"],
+            "properties": {
+              "state": { "type": ["string", "null"] },
+              "reason": { "type": ["string", "null"] },
+              "fixedBy": { "type": "array", "items": { "type": "string" } },
+              "solved": { "type": ["boolean", "null"] }
+            }
+          },
+          "scores": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["similarity", "lexical", "fused"],
+            "properties": {
+              "similarity": { "type": ["number", "null"] },
+              "lexical": { "type": ["number", "null"] },
+              "fused": { "type": "number" }
+            }
+          }
+        }
+      }
+    },
+    "thresholds": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["answer", "links"],
+      "properties": { "answer": { "type": "number" }, "links": { "type": "number" } }
+    },
+    "retrieval": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["bestSimilarity", "minSimilarity", "indexBuiltAt"],
+      "properties": {
+        "bestSimilarity": { "type": "number" },
+        "minSimilarity": { "type": "number" },
+        "indexBuiltAt": { "type": ["string", "null"] }
+      }
+    }
+  }
+}
