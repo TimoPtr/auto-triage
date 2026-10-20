@@ -75,7 +75,7 @@ function toItem(host: string, category: SiteCategory, listed: ListTopic, chunks:
   };
 }
 
-export interface ReadTopicsInput { client: DiscourseClient; host: string; options: DiscourseSiteConfig; now?: Date; raw?: RawStore }
+export interface ReadTopicsInput { client: DiscourseClient; host: string; options: DiscourseSiteConfig; now?: Date; raw?: RawStore; since?: Date }
 
 /** Reads the topics of the configured categories as forum items with their accepted answer. */
 export async function* readTopics({ client, host, options, now = new Date(), raw }: ReadTopicsInput): AsyncGenerator<IndexItem> {

@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { writeIndex, chunkHash } from '../../src/store/writer.ts';
 import { openDatabase, readMeta } from '../../src/store/db.ts';
-import type { IndexChunk, IndexItem } from '../../src/providers/types.ts';
+import type { IndexChunk, IndexItem, Removal } from '../../src/providers/types.ts';
 
 const tmp = mkdtempSync(join(tmpdir(), 'kb-writer-'));
 test.after(() => rmSync(tmp, { recursive: true, force: true }));
@@ -115,4 +115,12 @@ test('ignores an unreadable previous index', async () => {
   (await import('node:fs')).writeFileSync(bogus, 'not a database');
   const stats = await writeIndex({ items: of(item('1', 'widget stops')), embedder: fakeEmbedder(), outPath: join(tmp, 'g.sqlite'), previousPath: bogus, meta: {} });
   assert.equal(stats.reused, 0);
+});
+
+test('a full build skips removals in the stream', async () => {
+  const path = join(tmp, 'removals.sqlite');
+  const removal: Removal = { remove: true, provider: 'github', origin: 'o/r', source: 'issue', sourceId: '1' };
+  async function* items() { yield item('1', 'a'); yield removal; yield item('2', 'b'); }
+  const stats = await writeIndex({ items: items(), embedder: fakeEmbedder(), outPath: path, meta: {} });
+  assert.equal(stats.items, 2);
 });

@@ -115,6 +115,8 @@ export interface ReadIssuesInput {
   options: IssuesConfig;
   now?: Date;
   raw?: RawStore;
+  /** Only issues updated after this instant; absent, every issue. */
+  since?: Date;
 }
 
 /**

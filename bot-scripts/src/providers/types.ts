@@ -31,9 +31,20 @@ export interface IndexItem {
   chunks: IndexChunk[];
 }
 
+/** An item a source listed that no longer qualifies; an incremental build deletes it. */
+export interface Removal { remove: true; provider: string; origin: string; source: SourceKind; sourceId: string }
+export type ProviderItem = IndexItem | Removal;
+
+export function isRemoval(item: ProviderItem): item is Removal {
+  return 'remove' in item && item.remove === true;
+}
+
+/** `since` limits a read to what changed after that instant; absent, the source is read in full. */
+export interface ReadWindow { since?: Date }
+
 export interface Provider {
   name: string;
-  items(): AsyncGenerator<IndexItem>;
+  items(window?: ReadWindow): AsyncGenerator<ProviderItem>;
 }
 
 /** The part of the GitHub client the readers depend on. */

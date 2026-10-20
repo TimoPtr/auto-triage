@@ -4,7 +4,7 @@ import type { DatabaseSync } from 'node:sqlite';
 import { openDatabase, createSchema, readMeta, SCHEMA_VERSION } from './db.ts';
 import { quantizeInt8, toBlob } from './vectors.ts';
 import type { Embedder } from '../embed/embedder.ts';
-import type { IndexChunk, IndexItem } from '../providers/types.ts';
+import { isRemoval, type IndexChunk, type IndexItem, type ProviderItem } from '../providers/types.ts';
 
 const EMBED_BATCH = 256;
 
@@ -16,7 +16,7 @@ export interface WriteStats {
 }
 
 export interface WriteIndexInput {
-  items: AsyncIterable<IndexItem>;
+  items: AsyncIterable<ProviderItem>;
   embedder: Embedder;
   outPath: string;
   previousPath?: string;
@@ -127,6 +127,7 @@ export async function writeIndex({ items, embedder, outPath, previousPath, meta 
     createSchema(db, { dimensions: embedder.dimensions });
     stmt = statements(db);
     for await (const item of items) {
+      if (isRemoval(item)) continue;
       db.exec('BEGIN');
       const itemId = insertItem(stmt, item);
       stats.items += 1;

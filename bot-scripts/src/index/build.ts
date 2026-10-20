@@ -2,12 +2,12 @@ import { writeIndex, type WriteStats } from '../store/writer.ts';
 import { FORMAT_VERSION } from '../store/db.ts';
 import type { Config } from '../config/types.ts';
 import type { Embedder } from '../embed/embedder.ts';
-import type { IndexItem, Provider } from '../providers/types.ts';
+import type { Provider, ProviderItem } from '../providers/types.ts';
 
 const elapsedSeconds = (since: number) => ((performance.now() - since) / 1000).toFixed(1);
 
 /** Every provider's items in turn, with a log line per provider giving its item count and wall time. */
-async function* concat(providers: Provider[], log: (line: string) => void): AsyncGenerator<IndexItem> {
+async function* concat(providers: Provider[], log: (line: string) => void): AsyncGenerator<ProviderItem> {
   for (const provider of providers) {
     const started = performance.now();
     let count = 0;

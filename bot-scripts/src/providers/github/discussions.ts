@@ -60,7 +60,7 @@ function toItem(node: Node, repo: string, answers: boolean): IndexItem {
   };
 }
 
-export interface ReadDiscussionsInput { client: PaginatingClient; repo: string; options: DiscussionsConfig; raw?: RawStore }
+export interface ReadDiscussionsInput { client: PaginatingClient; repo: string; options: DiscussionsConfig; raw?: RawStore; since?: Date }
 
 /** Reads the discussions of the configured categories through GraphQL. */
 export async function* readDiscussions({ client, repo, options, raw }: ReadDiscussionsInput): AsyncGenerator<IndexItem> {

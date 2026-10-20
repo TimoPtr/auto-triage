@@ -130,7 +130,7 @@ function qualifies(pull: ApiPull, options: PullsConfig, cutoff: Date | null): bo
   return true;
 }
 
-export interface ReadPullsInput { client: PaginatingClient; repo: string; options: PullsConfig; now?: Date; raw?: RawStore }
+export interface ReadPullsInput { client: PaginatingClient; repo: string; options: PullsConfig; now?: Date; raw?: RawStore; since?: Date }
 
 /** Reads closed pull requests, merged or not, with their maintainer review threads. */
 export async function* readPulls({ client, repo, options, now = new Date(), raw }: ReadPullsInput): AsyncGenerator<IndexItem> {

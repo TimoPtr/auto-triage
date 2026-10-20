@@ -7,7 +7,7 @@ const DAY_MS = 24 * 60 * 60 * 1000;
 
 interface ApiRelease { tag_name: string; name: string | null; draft: boolean; prerelease: boolean; published_at: string | null; html_url: string; body: string | null }
 
-export interface ReadReleasesInput { client: PaginatingClient; repo: string; options: ReleasesConfig; now?: Date; raw?: RawStore }
+export interface ReadReleasesInput { client: PaginatingClient; repo: string; options: ReleasesConfig; now?: Date; raw?: RawStore; since?: Date }
 
 /** Reads release notes: which version shipped what. */
 export async function* readReleases({ client, repo, options, now = new Date(), raw }: ReadReleasesInput): AsyncGenerator<IndexItem> {

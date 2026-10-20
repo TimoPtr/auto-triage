@@ -6,7 +6,7 @@ import { readDocs } from './docs.ts';
 import { readCode } from './code.ts';
 import { readFiles } from './files.ts';
 import type { GithubRepoConfig } from '../../config/types.ts';
-import type { PaginatingClient, Provider } from '../types.ts';
+import type { PaginatingClient, Provider, ReadWindow } from '../types.ts';
 import type { RawStore } from '../../store/raw.ts';
 
 export interface GithubProviderDeps {
@@ -25,12 +25,12 @@ export function createGithubProvider(repos: Record<string, GithubRepoConfig>, { 
   };
   return {
     name: 'github',
-    async *items() {
+    async *items({ since }: ReadWindow = {}) {
       for (const [repo, c] of Object.entries(repos)) {
-        if (c.issues) yield* readIssues({ client, repo, options: c.issues, now, raw });
-        if (c.pulls) yield* readPulls({ client, repo, options: c.pulls, now, raw });
-        if (c.discussions) yield* readDiscussions({ client, repo, options: c.discussions, raw });
-        if (c.releases) yield* readReleases({ client, repo, options: c.releases, now, raw });
+        if (c.issues) yield* readIssues({ client, repo, options: c.issues, now, raw, since });
+        if (c.pulls) yield* readPulls({ client, repo, options: c.pulls, now, raw, since });
+        if (c.discussions) yield* readDiscussions({ client, repo, options: c.discussions, raw, since });
+        if (c.releases) yield* readReleases({ client, repo, options: c.releases, now, raw, since });
         if (c.docs) yield* readDocs({ repo, checkoutPath: checkoutOf(repo, 'docs'), options: c.docs });
         if (c.code) yield* readCode({ repo, checkoutPath: checkoutOf(repo, 'code'), options: c.code });
         if (c.files?.length) yield* readFiles({ repo, checkoutPath: checkoutOf(repo, 'files'), entries: c.files, ref: c.code?.ref ?? 'main' });
