@@ -1,7 +1,7 @@
 import { cleanIssueText } from '../../text/clean.ts';
 import { packText } from '../../text/chunk.ts';
 import type { IssuesConfig } from '../../config/types.ts';
-import type { AuthorRole, IndexChunk, IndexItem, PaginatingClient } from '../types.ts';
+import type { AuthorRole, IndexChunk, IndexItem, PaginatingClient, ProviderItem } from '../types.ts';
 import type { RawStore } from '../../store/raw.ts';
 
 const MAINTAINER_ASSOCIATIONS = new Set(['OWNER', 'MEMBER', 'COLLABORATOR']);
@@ -123,24 +123,33 @@ export interface ReadIssuesInput {
  * Reads the issues of one repository as index items: body chunks per issue,
  * chunks per comment, and the outcome fields the renderer shows.
  */
-export async function* readIssues({ client, repo, options, now = new Date(), raw }: ReadIssuesInput): AsyncGenerator<IndexItem> {
+export async function* readIssues({ client, repo, options, now = new Date(), raw, since }: ReadIssuesInput): AsyncGenerator<ProviderItem> {
   const cutoff = options.closedWithinDays === undefined ? null : new Date(now.getTime() - options.closedWithinDays * DAY_MS);
   const wanted = new Set(options.states);
+  for (const params of listings(wanted, cutoff, since)) for await (const element of client.paginate(`/repos/${repo}/issues`, params)) {
+    const issue = element as ApiIssue;
+    if (issue.pull_request) continue;
+    if (!wanted.has(issue.state) || (cutoff && issue.state === 'closed' && issue.closed_at && new Date(issue.closed_at) < cutoff)) {
+      if (since) yield { remove: true, provider: 'github', origin: repo, source: 'issue', sourceId: String(issue.number) };
+      continue;
+    }
+    yield issueItem(issue, await issueComments(client, repo, issue, options.comments, raw), repo);
+  }
+}
+
+/**
+ * The listing calls of a pass. A full pass lists open issues without a window
+ * (a long-standing bug nobody touched is still a duplicate target) and closed
+ * ones since the window start when one is set, because `since` filters on
+ * `updated_at`. An incremental pass lists every state once since the date.
+ */
+function listings(wanted: Set<string>, cutoff: Date | null, since: Date | undefined): Record<string, string | number>[] {
   const listing = { per_page: 100, sort: 'updated', direction: 'asc' };
-  // Open issues have no window: a long-standing bug nobody touched is still a duplicate target.
-  // `since` filters on updated_at, so it is only applied to the closed listing, and only when a window is set.
-  const listings = [
+  if (since) return [{ state: 'all', since: since.toISOString(), ...listing }];
+  return [
     ...(wanted.has('open') ? [{ state: 'open', ...listing }] : []),
     ...(wanted.has('closed') ? [{ state: 'closed', ...(cutoff ? { since: cutoff.toISOString() } : {}), ...listing }] : []),
   ];
-
-  for (const params of listings) for await (const element of client.paginate(`/repos/${repo}/issues`, params)) {
-    const issue = element as ApiIssue;
-    if (issue.pull_request) continue;
-    if (!wanted.has(issue.state)) continue;
-    if (cutoff && issue.state === 'closed' && issue.closed_at && new Date(issue.closed_at) < cutoff) continue;
-    yield issueItem(issue, await issueComments(client, repo, issue, options.comments, raw), repo);
-  }
 }
 
 export interface ReadIssueInput { client: PaginatingClient; repo: string; number: number; options: IssuesConfig; raw?: RawStore }

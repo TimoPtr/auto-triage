@@ -178,3 +178,18 @@ test('readIssue returns null for a pull request or an unwanted state', async () 
   assert.equal(await readIssue({ client: fakeClient(), repo: 'o/r', number: 13, options }), null);
   assert.equal(await readIssue({ client: fakeClient(), repo: 'o/r', number: 12, options: { ...options, states: ['open'] } }), null);
 });
+
+test('since lists every state once with the since parameter', async () => {
+  const log = [];
+  await collect(readIssues({ client: fakeClient(log), repo: 'o/r', options, now, since: new Date('2026-10-01T00:00:00Z') }));
+  const listings = log.filter((c) => c.path === '/repos/o/r/issues').map((c) => c.params);
+  assert.deepEqual(listings, [{ state: 'all', since: '2026-10-01T00:00:00.000Z', per_page: 100, sort: 'updated', direction: 'asc' }]);
+});
+
+test('yields a removal for a listed issue that stopped qualifying', async () => {
+  const items = await collect(readIssues({ client: fakeClient(), repo: 'o/r', options: { ...options, states: ['closed'] }, now, since: new Date('2020-01-01T00:00:00Z') }));
+  const removals = items.filter((i) => i.remove).map((i) => i.sourceId).sort();
+  assert.deepEqual(removals, ['20', '7'], 'the reopened issue and the one closed before the window');
+  assert.deepEqual(items.find((i) => i.sourceId === '20'), { remove: true, provider: 'github', origin: 'o/r', source: 'issue', sourceId: '20' });
+  assert.ok(items.every((i) => i.sourceId !== '13'), 'a pull request listed as an issue is neither an item nor a removal');
+});
