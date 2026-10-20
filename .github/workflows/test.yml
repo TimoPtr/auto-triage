@@ -26,3 +26,22 @@ jobs:
         working-directory: bot-scripts
       - run: npm test
         working-directory: bot-scripts
+  template:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          gh extension install github/gh-aw --pin v0.89.21
+          consumer="$RUNNER_TEMP/consumer"
+          mkdir -p "$consumer/.github/workflows"
+          cp workflows/triage.md "$consumer/.github/workflows/knowledge-triage.md"
+          cd "$consumer"
+          git init -q
+          gh aw compile knowledge-triage
+          grep -q "gate_result == 'success'" .github/workflows/knowledge-triage.lock.yml

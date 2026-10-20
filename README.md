@@ -11,7 +11,10 @@ callers. Design: the knowledge bot spec in `home-assistant/android`,
   writer, retrieval, CLIs. `npm ci --ignore-scripts --omit=dev` installs the runtime; `tsc --noEmit` is a
   dev-only check. Imports keep the `.ts` extension, and no syntax that needs transformation (enums,
   parameter properties, decorators) is used.
-- `schemas/` JSON Schema for the config and the index metadata.
+- `bot-scripts/src/triage/` the deterministic halves of the triage workflow: the gate and handoff
+  builder, the verdict parser and the comment renderer.
+- `workflows/` gh-aw workflow templates a consumer installs with `gh aw add`: `triage.md`.
+- `schemas/` JSON Schema for the config, the eval cases, the handoff and the index metadata.
 - `docs/superpowers/plans/` implementation plans, one per phase.
 
 ## Development
@@ -343,3 +346,75 @@ The tracking issue reports `missing` until the first index is published.
 The pipeline self-test (`ci-pipeline.yml`) runs on every push to `main` and every pull request: it
 validates `examples/selfcheck/knowledge-bot.yaml`, builds an index of this repository's own issues
 and docs through the reusable workflow, restores it in a second job and runs one query.
+
+## Triage workflow
+
+`workflows/triage.md` is a gh-aw workflow (Copilot engine) that comments on a new issue with the
+closest earlier reports, discussions and docs, and a short answer when it is confident. Install it
+in a consumer and compile it there:
+
+    gh aw add TimoPtr/auto-triage/triage@main -n knowledge-triage
+    gh aw compile knowledge-triage
+
+Until the repository moves to the organization and tags `v1`, the template checks out
+`TimoPtr/auto-triage@main` in two places (marked `TODO pin by SHA`); the consumer edits those
+lines when it pins.
+
+It runs on `issues: opened`, on the `ai-recheck` label (removed again so it can be re-applied),
+and by hand through `workflow_dispatch` with an issue number. `roles: all` is set so issues from
+outside reporters are triaged too; the issue text is therefore treated as data everywhere.
+
+What happens, in three jobs:
+
+1. **Pre-activation (no model).** Checks out the consumer and this repository, restores the index,
+   fetches the issue with the workflow token and runs `prepare-triage`: the body is cleaned like an
+   indexed issue, embedded, and searched (dense + lexical + a live forum search), excluding the issue
+   itself when the index already holds it. The gate stops the run for pull requests, bot authors,
+   empty issues, a missing or unusable index, and a best similarity under `triage.minSimilarity`.
+   Otherwise it writes the handoff (`schemas/handoff.json`: the cleaned issue, up to ten excerpts
+   with ids, source, url, date, audience, outcome and scores, and the confidence thresholds) and
+   uploads it as the `triage-handoff` artifact. A stopped run spends no agent time and posts nothing.
+2. **Agent.** `claude-sonnet-5` on the Copilot engine, five turns, no network, no GitHub tools,
+   `bash` limited to `cat`, `jq`, `head`, `wc`. It reads `/tmp/gh-aw/agent/handoff.json` and calls
+   `post_triage_verdict` once with `confidence` (0 to 100), `duplicates` and `related` (excerpt ids),
+   an optional `answer` and `component`. It never sees the index and cannot write anywhere.
+3. **post-triage-verdict (no model).** `render-verdict` validates the verdict against the handoff
+   (unknown ids are dropped with a note, an unparsable confidence fails the job), picks the tier
+   (`high` from `triage.confidence.answer`, default 75; `medium` from `triage.confidence.links`,
+   default 45; `low` below) and renders the comment: a marker
+   `<!-- knowledge-bot v1 run=<id> tier=<tier> issue=<n> -->`, "Possibly related to earlier
+   reports", "Discussions and docs", the answer on the high tier, and a feedback footer. Links come
+   only from the handoff; titles are escaped and mentions removed; developer-audience excerpts
+   appear only when the issue talks about building, maintainer-audience ones never (`component`
+   goes to the run summary). A low tier posts nothing. The job minimizes earlier bot comments as
+   outdated and posts the new one with `gh api` under its own `issues: write`; the `duplicate`
+   label is never applied.
+
+Every run writes the gate outcome, the tier, the verdict and the comment to the job summary, so a
+run that posts nothing is still readable.
+
+Staged rollout: with `triage.staged: true` in the config the comment goes to the run summary only.
+Read the summaries for a while, then flip it.
+
+    triage:
+      staged: true
+      minSimilarity: 0.35
+      confidence:
+        answer: 75
+        links: 45
+
+Local dry run, from `bot-scripts/` with a built index (the agent step is replaced by a hand-written
+verdict):
+
+    GH_TOKEN=$(gh auth token) npm run -s prepare-triage -- --config ../../android/.github/knowledge-bot.yaml \
+      --index knowledge-android.sqlite --index-status fresh --repo home-assistant/android --issue 7654 \
+      --out eval-out/triage/handoff.json
+    echo '{"items":[{"type":"post_triage_verdict","confidence":"80","duplicates":"4","related":"0,2","answer":"..."}]}' \
+      > eval-out/triage/agent_output.json
+    npm run -s render-verdict -- --config ../../android/.github/knowledge-bot.yaml --handoff eval-out/triage/handoff.json \
+      --agent-output eval-out/triage/agent_output.json --out-dir eval-out/triage --run-id local
+    cat eval-out/triage/comment.md
+
+Cost: one model run per triaged issue, bounded by five turns and fifteen minutes; the gate keeps
+pull requests, bot issues and low-similarity issues from reaching the model. The `template` job of
+the test workflow compiles the template with the pinned gh-aw version on every change.
