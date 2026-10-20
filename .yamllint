@@ -1,6 +1,8 @@
 ---
 # Mirrors the home-assistant/android configuration, except that every YAML
 # file here starts with a document marker.
+ignore: |
+  *.lock.yml
 rules:
   braces:
     level: error

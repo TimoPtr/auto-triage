@@ -1,25 +1,38 @@
 ---
-# Knowledge bot triage. Installed into a consumer with
-#   gh aw add home-assistant/auto-triage/triage@v1 -n knowledge-triage
-# and compiled there with `gh aw compile knowledge-triage`.
+# Knowledge bot triage, a reusable workflow: the consumer's knowledge-triage.yml owns the
+# triggers (issues opened or labeled, workflow_dispatch) and calls
+#   uses: home-assistant/auto-triage/.github/workflows/triage.lock.yml@<ref>
+# with the inputs below. The lock file next to this one is compiled with `gh aw compile triage`
+# and checked for staleness by the test workflow; never edit it by hand.
 #
 # Three jobs: the pre-activation job restores the index and retrieves the closest
 # excerpts without any model (the gate); the agent job reads one file and calls one
 # tool; the post-triage-verdict job renders and posts the comment deterministically.
 # The issue text reaches the model only as data inside the handoff file.
 on:
-  issues:
-    types: [opened, labeled]
-  workflow_dispatch:
+  workflow_call:
     inputs:
       issue-number:
-        description: Issue to triage
+        description: Issue to triage.
         required: true
         type: string
+      event-action:
+        description: opened, labeled, or dispatch for a manual run.
+        required: true
+        type: string
+      label:
+        description: The label of a labeled event; only ai-recheck triggers a run.
+        required: false
+        type: string
+        default: ""
+      config:
+        description: Path of the consumer config.
+        required: false
+        type: string
+        default: .github/knowledge-bot.yaml
   reaction: eyes
-  # Issues from anyone are triaged; the default allowlist would skip outside reporters.
-  roles: all
-  # issues: write removes the ai-recheck label so it can be applied again.
+  # issues: write removes the ai-recheck label so it can be applied again. Who can trigger a run is
+  # decided by the caller's events: issues from anyone are triaged.
   permissions:
     contents: read
     actions: read
@@ -27,9 +40,9 @@ on:
   steps:
     - id: trigger
       env:
-        ACTION: ${{ github.event.action }}
-        LABEL: ${{ github.event.label.name }}
-        ISSUE: ${{ github.event.issue.number || inputs.issue-number }}
+        ACTION: ${{ inputs.event-action }}
+        LABEL: ${{ inputs.label }}
+        ISSUE: ${{ inputs.issue-number }}
         REPO: ${{ github.repository }}
         GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       run: |
@@ -49,7 +62,7 @@ on:
       env:
         GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         REPO: ${{ github.repository }}
-        ISSUE: ${{ github.event.issue.number || inputs.issue-number }}
+        ISSUE: ${{ inputs.issue-number }}
       run: |
         set -euo pipefail
         mkdir -p /tmp/triage
@@ -58,12 +71,19 @@ on:
       uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       with:
         persist-credentials: false
-    # TODO pin by SHA with a version comment once auto-triage moves to the home-assistant organization and tags v1
+    # The scripts come from this repository at the commit the caller references, like the index workflows.
+    - id: self
+      if: steps.trigger.outputs.run == 'true'
+      env:
+        JOB_WORKFLOW_REF: ${{ github.job_workflow_ref }}
+      run: |
+        set -euo pipefail
+        echo "repo=${JOB_WORKFLOW_REF%%/.github/*}" >> "$GITHUB_OUTPUT"
     - if: steps.trigger.outputs.run == 'true'
       uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       with:
-        repository: TimoPtr/auto-triage
-        ref: main
+        repository: ${{ steps.self.outputs.repo }}
+        ref: ${{ github.job_workflow_sha }}
         path: .knowledge-bot/auto-triage
         persist-credentials: false
     - if: steps.trigger.outputs.run == 'true'
@@ -71,7 +91,7 @@ on:
     - id: config
       if: steps.trigger.outputs.run == 'true'
       env:
-        CONFIG: .github/knowledge-bot.yaml
+        CONFIG: ${{ inputs.config }}
       run: node "$BOT_SCRIPTS_DIR/src/cli/validate-config.ts" --config "$CONFIG"
     - id: index
       if: steps.trigger.outputs.run == 'true'
@@ -92,7 +112,7 @@ on:
     - id: prepare
       if: steps.trigger.outputs.run == 'true'
       env:
-        CONFIG: .github/knowledge-bot.yaml
+        CONFIG: ${{ inputs.config }}
         REPO: ${{ github.repository }}
         INDEX: ${{ steps.index.outputs.index-path }}
         INDEX_STATUS: ${{ steps.index.outputs.status }}
@@ -131,9 +151,6 @@ timeout-minutes: 15
 strict: true
 # The pre-activation job restores a 100 MB index and embeds the issue; the default slim runner is too small for it.
 runs-on-slim: ubuntu-latest
-
-concurrency:
-  job-discriminator: ${{ github.event.issue.number || inputs.issue-number }}
 
 # Agent job, before the agent: the handoff written by the pre-activation job.
 steps:
@@ -180,11 +197,16 @@ safe-outputs:
         - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
           with:
             persist-credentials: false
-        # TODO pin by SHA with a version comment once auto-triage moves to the home-assistant organization and tags v1
+        - id: self
+          env:
+            JOB_WORKFLOW_REF: ${{ github.job_workflow_ref }}
+          run: |
+            set -euo pipefail
+            echo "repo=${JOB_WORKFLOW_REF%%/.github/*}" >> "$GITHUB_OUTPUT"
         - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
           with:
-            repository: TimoPtr/auto-triage
-            ref: main
+            repository: ${{ steps.self.outputs.repo }}
+            ref: ${{ github.job_workflow_sha }}
             path: .knowledge-bot/auto-triage
             persist-credentials: false
         - uses: ./.knowledge-bot/auto-triage/actions/setup-bot
@@ -194,7 +216,7 @@ safe-outputs:
             path: /tmp/triage
         - id: render
           env:
-            CONFIG: .github/knowledge-bot.yaml
+            CONFIG: ${{ inputs.config }}
             AGENT_OUTPUT: ${{ env.GH_AW_AGENT_OUTPUT }}
             RUN_ID: ${{ github.run_id }}
           run: |
@@ -207,7 +229,7 @@ safe-outputs:
           env:
             GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
             REPO: ${{ github.repository }}
-            ISSUE: ${{ github.event.issue.number || inputs.issue-number }}
+            ISSUE: ${{ inputs.issue-number }}
             COMMENT: ${{ steps.render.outputs.comment-path }}
           run: |
             set -euo pipefail

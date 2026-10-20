@@ -7,7 +7,7 @@ const read = (rel: string) => readFileSync(fileURLToPath(new URL(rel, import.met
 
 test('the triage template restores the feedback file under the path the nightly build saves', () => {
   const build = read('../../../.github/workflows/build-index.yml');
-  const template = read('../../../workflows/triage.md');
+  const template = read('../../../.github/workflows/triage.md');
   const saved = /actions\/cache\/save[\s\S]*?path: (\S*feedback\S*)/.exec(build)?.[1];
   const restored = /actions\/cache\/restore[\s\S]*?path: (\S*feedback\S*)/.exec(template)?.[1];
   const passed = /--feedback (\S+)/.exec(template)?.[1];
