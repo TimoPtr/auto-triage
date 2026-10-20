@@ -21,10 +21,13 @@ export interface PlanBuildInput {
   configHash: string;
   now: Date;
   full: boolean;
+  /** An offline replay of the raw store always rebuilds in full. */
+  offline?: boolean;
 }
 
 /** Why the previous index cannot seed an incremental build, or null when it can. */
-function fullReason({ previousMeta, configHash, now, full }: PlanBuildInput): string | null {
+function fullReason({ previousMeta, configHash, now, full, offline }: PlanBuildInput): string | null {
+  if (offline) return 'offline';
   if (full) return 'forced';
   if (!previousMeta) return 'no previous index';
   if (!previousMeta.started_at) return 'previous index has no started_at';

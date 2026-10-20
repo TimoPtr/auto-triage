@@ -49,11 +49,12 @@ async function* listTopics(client: DiscourseClient, category: SiteCategory, sinc
  * and the solved flag is unchanged (accepting an answer creates no post), else
  * fetched and recorded.
  */
-async function loadTopic(client: DiscourseClient, host: string, listed: ListTopic, raw?: RawStore): Promise<Topic> {
+async function loadTopic(client: DiscourseClient, host: string, category: SiteCategory, listed: ListTopic, raw?: RawStore): Promise<Topic> {
   const stored = raw?.get<{ listed: ListTopic; topic: Topic }>('discourse', host, 'topic', String(listed.id));
   if (stored && stored.updatedAt === listed.last_posted_at && stored.payload.listed.has_accepted_answer === listed.has_accepted_answer) return stored.payload.topic;
   const topic = await client.getJson<Topic>(`/t/${listed.id}.json`);
-  raw?.put({ provider: 'discourse', origin: host, kind: 'topic', id: String(listed.id), updatedAt: listed.last_posted_at, payload: { listed, topic } });
+  // the category rides along so an offline replay can list the topic under it
+  raw?.put({ provider: 'discourse', origin: host, kind: 'topic', id: String(listed.id), updatedAt: listed.last_posted_at, payload: { listed, topic, category } });
   return topic;
 }
 
@@ -96,7 +97,7 @@ export async function* readTopics({ client, host, options, now = new Date(), raw
         if (since) yield { remove: true, provider: 'discourse', origin: host, source: 'forum', sourceId: String(listed.id) };
         continue;
       }
-      const topic = await loadTopic(client, host, listed, raw);
+      const topic = await loadTopic(client, host, category, listed, raw);
       const first = topic.post_stream.posts[0];
       const chunks: IndexChunk[] = [];
       for (const piece of packText([listed.title, htmlToText(first?.cooked ?? '')].filter(Boolean).join('\n\n'), { maxChars: CHUNK_CHARS })) {

@@ -40,3 +40,9 @@ test('full when the last full build is older than FULL_REBUILD_DAYS', () => {
   assert.equal(recent.mode, 'incremental');
   assert.equal(planBuild({ previousMeta: { ...meta, full_built_at: undefined }, configHash: 'abc', now, full: false }).mode, 'full');
 });
+
+test('full with reason offline', () => {
+  const plan = planBuild({ previousMeta: meta, configHash: 'abc', now, full: false, offline: true });
+  assert.equal(plan.mode, 'full');
+  assert.equal(plan.reason, 'offline');
+});

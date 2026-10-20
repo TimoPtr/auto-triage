@@ -13,14 +13,21 @@ export interface ProviderDeps {
   now?: Date;
   /** When given, every fetched payload is recorded and unchanged items are reused from it. */
   raw?: RawStore;
+  /** `fetchImpl` replays the raw store: no token is needed and the Discourse throttle is off. */
+  offline?: boolean;
 }
 
 /**
  * Builds the provider list for a config. The registry is the only place that
  * knows which top-level key maps to which factory.
  */
-export function createProviders(config: Config, { githubToken, fetchImpl, sleepImpl, checkouts = {}, now = new Date(), raw }: ProviderDeps): Provider[] {
+export function createProviders(config: Config, { githubToken, fetchImpl, sleepImpl, checkouts = {}, now = new Date(), raw, offline = false }: ProviderDeps): Provider[] {
   const providers: Provider[] = [];
+  if (offline) {
+    if (!fetchImpl) throw new Error('an offline build needs a replay fetch');
+    githubToken ??= 'offline';
+    sleepImpl ??= async () => {};
+  }
   if (config.providers.github) {
     if (!githubToken) throw new Error('GITHUB_TOKEN is required for the github provider');
     const client = createGitHubClient({ token: githubToken, fetchImpl });

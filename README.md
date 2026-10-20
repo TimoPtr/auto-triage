@@ -103,6 +103,14 @@ original material rather than from cleaned chunks, and a rebuild with the same s
 comment, review and topic requests of items whose change marker (`updated_at`, `last_posted_at`)
 did not move.
 
+With `--offline`, the build replays the raw store instead of the network: issues, pull requests,
+discussions, releases and forum topics come from the stored payloads, docs, code and files from the
+checkouts as usual, and no token is needed. It is always a full build; `--previous` still reuses
+the vectors of unchanged chunks. The benchmark's bake-off builds one index per candidate model this
+way. Two things do not replay: an accepted forum answer that was not on the stored first page of
+posts, and the GraphQL links the case mining fetches (those are stored by `mine-cases --github`,
+see Benchmark). On the android store, an offline rebuild with every vector reused takes 22 s.
+
 ## Run it in GitHub Actions
 
 A consumer holds its config at `.github/knowledge-bot.yaml` and two thin caller workflows. The
