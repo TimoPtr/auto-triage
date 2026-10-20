@@ -17,10 +17,16 @@ const BACKOFF_MS = [1000, 2000, 4000];
 
 type Params = Record<string, string | number | boolean>;
 
+export interface GraphqlError { message: string; path?: (string | number)[] }
+export interface GraphqlResult<T> { data: T | null; errors: GraphqlError[] }
+
 export interface GitHubClient {
   getJson<T = unknown>(path: string, params?: Params): Promise<T>;
   paginate<T = unknown>(path: string, params?: Params): AsyncGenerator<T>;
+  /** A GraphQL call that throws on any error in the response. */
   graphql<T = unknown>(query: string, variables?: Record<string, unknown>): Promise<T>;
+  /** A GraphQL call returning partial data next to the per-field errors, for batched queries where one alias may fail. */
+  graphqlPartial<T = unknown>(query: string, variables?: Record<string, unknown>): Promise<GraphqlResult<T>>;
 }
 
 export interface GitHubClientOptions {
@@ -108,21 +114,27 @@ export function createGitHubClient({ token, fetchImpl = fetch, baseUrl = 'https:
     return response;
   }
 
+  async function post<T>(query: string, variables: Record<string, unknown>): Promise<GraphqlResult<T>> {
+    const response = await request(`${baseUrl}/graphql`, {
+      method: 'POST',
+      headers: { ...headers, 'content-type': 'application/json' },
+      body: JSON.stringify({ query, variables }),
+    });
+    const payload = (await response.json()) as { data?: T | null; errors?: GraphqlError[] };
+    return { data: payload.data ?? null, errors: payload.errors ?? [] };
+  }
+
   return {
     async getJson<T>(path: string, params?: Params): Promise<T> {
       const response = await request(buildUrl(path, params, baseUrl));
       return (await response.json()) as T;
     },
     async graphql<T>(query: string, variables: Record<string, unknown> = {}): Promise<T> {
-      const response = await request(`${baseUrl}/graphql`, {
-        method: 'POST',
-        headers: { ...headers, 'content-type': 'application/json' },
-        body: JSON.stringify({ query, variables }),
-      });
-      const payload = (await response.json()) as { data?: T; errors?: { message: string }[] };
-      if (payload.errors?.length) throw new Error(`GitHub GraphQL: ${payload.errors[0].message}`);
-      return payload.data as T;
+      const { data, errors } = await post<T>(query, variables);
+      if (errors.length) throw new Error(`GitHub GraphQL: ${errors[0].message}`);
+      return data as T;
     },
+    graphqlPartial: post,
     async *paginate<T>(path: string, params?: Params): AsyncGenerator<T> {
       let url: string | null = buildUrl(path, params, baseUrl);
       while (url) {
