@@ -10,7 +10,7 @@ const DAY_MS = 24 * 60 * 60 * 1000;
 const CHUNK_CHARS = 2000;
 
 /** The fields of the REST issue and comment objects the reader uses. */
-interface ApiUser { login?: string }
+export interface ApiUser { login?: string; type?: string }
 interface ApiLabel { name: string }
 export interface ApiIssue {
   number: number;
@@ -28,12 +28,15 @@ export interface ApiIssue {
   reactions?: Record<string, number>;
   body?: string | null;
   pull_request?: unknown;
+  closed_by?: ApiUser | null;
 }
 export interface ApiComment {
+  id?: number;
   user?: ApiUser;
   author_association?: string;
   created_at: string;
   body?: string | null;
+  reactions?: Record<string, number>;
 }
 
 /**

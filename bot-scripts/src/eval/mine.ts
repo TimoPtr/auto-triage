@@ -9,7 +9,8 @@ import type { RawStore } from '../store/raw.ts';
 export const CLOSE_COMMENT_GRACE_MS = 60_000;
 export const DEFAULT_SAMPLE = 30;
 const MAINTAINER_ASSOCIATIONS = new Set(['OWNER', 'MEMBER', 'COLLABORATOR']);
-const DUPLICATE_OF = /\bdup(?:licate|e)s?\s*(?:of|:)?\s*(?:https:\/\/github\.com\/([^\s/]+\/[^\s/]+)\/(?:issues|pull)\/|#)(\d+)/gi;
+/** A maintainer's "duplicate of #n" (or a full issue url), shared with the feedback outcome rules. */
+export const DUPLICATE_OF = /\bdup(?:licate|e)s?\s*(?:of|:)?\s*(?:https:\/\/github\.com\/([^\s/]+\/[^\s/]+)\/(?:issues|pull)\/|#)(\d+)/gi;
 const URL = /https?:\/\/[^\s)>\]'"]+/g;
 /** Lines a comment quotes from someone else; what they say is not the maintainer's. */
 const QUOTED_LINE = /^[ \t]*>.*$/gm;
