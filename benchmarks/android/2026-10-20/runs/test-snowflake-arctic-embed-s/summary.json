@@ -1,0 +1,215 @@
+{
+  "run": {
+    "mode": "production",
+    "cases": 392,
+    "scored": 391,
+    "errors": 1,
+    "modelKey": "Snowflake/snowflake-arctic-embed-s@e596f507467533e48a2e17c007f0e1dacc837b33@q8@cls@q=Represent this sentence for searching relevant passages: @d=",
+    "builtAt": "2026-10-20T10:13:03.392Z",
+    "startedAt": "2026-10-20T11:46:05.874Z",
+    "durationSeconds": 89.825,
+    "threshold": 0.35
+  },
+  "retrieval": {
+    "all": {
+      "n": 282,
+      "recallAt5": 38.652482269503544,
+      "mrr": 0.24306399864910527
+    },
+    "byRelation": {
+      "docs": {
+        "n": 69,
+        "recallAt5": 30.434782608695652,
+        "mrr": 0.1453071083505866
+      },
+      "duplicate": {
+        "n": 55,
+        "recallAt5": 58.18181818181818,
+        "mrr": 0.4203751803751803
+      },
+      "fixed-by": {
+        "n": 157,
+        "recallAt5": 35.031847133757964,
+        "mrr": 0.21909058740268925
+      },
+      "forum": {
+        "n": 1,
+        "recallAt5": 100,
+        "mrr": 1
+      }
+    },
+    "byExpectedSource": {
+      "docs": {
+        "n": 69,
+        "recallAt5": 30.434782608695652,
+        "mrr": 0.1453071083505866
+      },
+      "issue": {
+        "n": 55,
+        "recallAt5": 58.18181818181818,
+        "mrr": 0.4203751803751803
+      },
+      "pull": {
+        "n": 157,
+        "recallAt5": 35.031847133757964,
+        "mrr": 0.21909058740268925
+      },
+      "forum": {
+        "n": 1,
+        "recallAt5": 100,
+        "mrr": 1
+      }
+    },
+    "byLabelSource": {
+      "comment:docs-link": {
+        "n": 69,
+        "recallAt5": 30.434782608695652,
+        "mrr": 0.1453071083505866
+      },
+      "timeline:marked-duplicate": {
+        "n": 18,
+        "recallAt5": 44.44444444444444,
+        "mrr": 0.3140432098765432
+      },
+      "comment:duplicate-of": {
+        "n": 37,
+        "recallAt5": 64.86486486486487,
+        "mrr": 0.4721042471042471
+      },
+      "pull:closing-reference": {
+        "n": 157,
+        "recallAt5": 35.031847133757964,
+        "mrr": 0.21909058740268925
+      },
+      "comment:forum-link": {
+        "n": 1,
+        "recallAt5": 100,
+        "mrr": 1
+      }
+    }
+  },
+  "gate": {
+    "at": {
+      "threshold": 0.35,
+      "precision": 72.1227621483376,
+      "specificity": 0,
+      "sensitivity": 100,
+      "positives": 282,
+      "negatives": 109
+    },
+    "sweep": [
+      {
+        "threshold": 0.3,
+        "precision": 72.1227621483376,
+        "specificity": 0,
+        "sensitivity": 100,
+        "positives": 282,
+        "negatives": 109
+      },
+      {
+        "threshold": 0.35,
+        "precision": 72.1227621483376,
+        "specificity": 0,
+        "sensitivity": 100,
+        "positives": 282,
+        "negatives": 109
+      },
+      {
+        "threshold": 0.4,
+        "precision": 72.1227621483376,
+        "specificity": 0,
+        "sensitivity": 100,
+        "positives": 282,
+        "negatives": 109
+      },
+      {
+        "threshold": 0.45,
+        "precision": 72.1227621483376,
+        "specificity": 0,
+        "sensitivity": 100,
+        "positives": 282,
+        "negatives": 109
+      },
+      {
+        "threshold": 0.5,
+        "precision": 72.1227621483376,
+        "specificity": 0,
+        "sensitivity": 100,
+        "positives": 282,
+        "negatives": 109
+      },
+      {
+        "threshold": 0.55,
+        "precision": 72.1227621483376,
+        "specificity": 0,
+        "sensitivity": 100,
+        "positives": 282,
+        "negatives": 109
+      },
+      {
+        "threshold": 0.6,
+        "precision": 72.1227621483376,
+        "specificity": 0,
+        "sensitivity": 100,
+        "positives": 282,
+        "negatives": 109
+      },
+      {
+        "threshold": 0.65,
+        "precision": 72.05128205128206,
+        "specificity": 0,
+        "sensitivity": 99.64539007092199,
+        "positives": 282,
+        "negatives": 109
+      },
+      {
+        "threshold": 0.7,
+        "precision": 71.97943444730078,
+        "specificity": 0,
+        "sensitivity": 99.29078014184397,
+        "positives": 282,
+        "negatives": 109
+      },
+      {
+        "threshold": 0.75,
+        "precision": 72.36842105263158,
+        "specificity": 3.669724770642202,
+        "sensitivity": 97.51773049645391,
+        "positives": 282,
+        "negatives": 109
+      },
+      {
+        "threshold": 0.8,
+        "precision": 75.34246575342466,
+        "specificity": 33.944954128440365,
+        "sensitivity": 78.01418439716312,
+        "positives": 282,
+        "negatives": 109
+      },
+      {
+        "threshold": 0.85,
+        "precision": 78.57142857142857,
+        "specificity": 80.73394495412845,
+        "sensitivity": 27.30496453900709,
+        "positives": 282,
+        "negatives": 109
+      },
+      {
+        "threshold": 0.9,
+        "precision": 83.33333333333333,
+        "specificity": 98.1651376146789,
+        "sensitivity": 3.5460992907801416,
+        "positives": 282,
+        "negatives": 109
+      },
+      {
+        "threshold": 0.95,
+        "precision": null,
+        "specificity": 100,
+        "sensitivity": 0,
+        "positives": 282,
+        "negatives": 109
+      }
+    ]
+  }
+}

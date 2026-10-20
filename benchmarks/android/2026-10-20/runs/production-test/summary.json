@@ -1,0 +1,215 @@
+{
+  "run": {
+    "mode": "production",
+    "cases": 392,
+    "scored": 391,
+    "errors": 1,
+    "modelKey": "Xenova/bge-small-en-v1.5@ea104dacec62c0de699686887e3f920caeb4f3e3@q8@cls",
+    "builtAt": "2026-10-19T09:15:01.164Z",
+    "startedAt": "2026-10-20T11:32:29.539Z",
+    "durationSeconds": 86.613,
+    "threshold": 0.35
+  },
+  "retrieval": {
+    "all": {
+      "n": 282,
+      "recallAt5": 32.6241134751773,
+      "mrr": 0.21192446245637742
+    },
+    "byRelation": {
+      "docs": {
+        "n": 69,
+        "recallAt5": 21.73913043478261,
+        "mrr": 0.12330917874396131
+      },
+      "duplicate": {
+        "n": 55,
+        "recallAt5": 52.72727272727273,
+        "mrr": 0.32347041847041835
+      },
+      "fixed-by": {
+        "n": 157,
+        "recallAt5": 29.936305732484076,
+        "mrr": 0.2067738347993125
+      },
+      "forum": {
+        "n": 1,
+        "recallAt5": 100,
+        "mrr": 1
+      }
+    },
+    "byExpectedSource": {
+      "docs": {
+        "n": 69,
+        "recallAt5": 21.73913043478261,
+        "mrr": 0.12330917874396131
+      },
+      "issue": {
+        "n": 55,
+        "recallAt5": 52.72727272727273,
+        "mrr": 0.32347041847041835
+      },
+      "pull": {
+        "n": 157,
+        "recallAt5": 29.936305732484076,
+        "mrr": 0.2067738347993125
+      },
+      "forum": {
+        "n": 1,
+        "recallAt5": 100,
+        "mrr": 1
+      }
+    },
+    "byLabelSource": {
+      "comment:docs-link": {
+        "n": 69,
+        "recallAt5": 21.73913043478261,
+        "mrr": 0.12330917874396131
+      },
+      "timeline:marked-duplicate": {
+        "n": 18,
+        "recallAt5": 44.44444444444444,
+        "mrr": 0.2631172839506173
+      },
+      "comment:duplicate-of": {
+        "n": 37,
+        "recallAt5": 56.75675675675676,
+        "mrr": 0.3528314028314028
+      },
+      "pull:closing-reference": {
+        "n": 157,
+        "recallAt5": 29.936305732484076,
+        "mrr": 0.2067738347993125
+      },
+      "comment:forum-link": {
+        "n": 1,
+        "recallAt5": 100,
+        "mrr": 1
+      }
+    }
+  },
+  "gate": {
+    "at": {
+      "threshold": 0.35,
+      "precision": 72.1227621483376,
+      "specificity": 0,
+      "sensitivity": 100,
+      "positives": 282,
+      "negatives": 109
+    },
+    "sweep": [
+      {
+        "threshold": 0.3,
+        "precision": 72.1227621483376,
+        "specificity": 0,
+        "sensitivity": 100,
+        "positives": 282,
+        "negatives": 109
+      },
+      {
+        "threshold": 0.35,
+        "precision": 72.1227621483376,
+        "specificity": 0,
+        "sensitivity": 100,
+        "positives": 282,
+        "negatives": 109
+      },
+      {
+        "threshold": 0.4,
+        "precision": 72.1227621483376,
+        "specificity": 0,
+        "sensitivity": 100,
+        "positives": 282,
+        "negatives": 109
+      },
+      {
+        "threshold": 0.45,
+        "precision": 72.1227621483376,
+        "specificity": 0,
+        "sensitivity": 100,
+        "positives": 282,
+        "negatives": 109
+      },
+      {
+        "threshold": 0.5,
+        "precision": 72.1227621483376,
+        "specificity": 0,
+        "sensitivity": 100,
+        "positives": 282,
+        "negatives": 109
+      },
+      {
+        "threshold": 0.55,
+        "precision": 72.1227621483376,
+        "specificity": 0,
+        "sensitivity": 100,
+        "positives": 282,
+        "negatives": 109
+      },
+      {
+        "threshold": 0.6,
+        "precision": 72.1227621483376,
+        "specificity": 0,
+        "sensitivity": 100,
+        "positives": 282,
+        "negatives": 109
+      },
+      {
+        "threshold": 0.65,
+        "precision": 72.1227621483376,
+        "specificity": 0,
+        "sensitivity": 100,
+        "positives": 282,
+        "negatives": 109
+      },
+      {
+        "threshold": 0.7,
+        "precision": 72.1227621483376,
+        "specificity": 0,
+        "sensitivity": 100,
+        "positives": 282,
+        "negatives": 109
+      },
+      {
+        "threshold": 0.75,
+        "precision": 72.55936675461741,
+        "specificity": 4.587155963302752,
+        "sensitivity": 97.51773049645391,
+        "positives": 282,
+        "negatives": 109
+      },
+      {
+        "threshold": 0.8,
+        "precision": 72.92993630573248,
+        "specificity": 22.01834862385321,
+        "sensitivity": 81.20567375886525,
+        "positives": 282,
+        "negatives": 109
+      },
+      {
+        "threshold": 0.85,
+        "precision": 75.23809523809524,
+        "specificity": 76.14678899082568,
+        "sensitivity": 28.01418439716312,
+        "positives": 282,
+        "negatives": 109
+      },
+      {
+        "threshold": 0.9,
+        "precision": 82.6086956521739,
+        "specificity": 96.3302752293578,
+        "sensitivity": 6.73758865248227,
+        "positives": 282,
+        "negatives": 109
+      },
+      {
+        "threshold": 0.95,
+        "precision": 75,
+        "specificity": 99.08256880733946,
+        "sensitivity": 1.0638297872340425,
+        "positives": 282,
+        "negatives": 109
+      }
+    ]
+  }
+}

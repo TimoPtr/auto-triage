@@ -211,7 +211,9 @@ config's `minSimilarity` of 0.35 filters nothing; the trade-off starts near 0.85
 specificity 76, sensitivity 28) and the threshold is a tuning item, not a benchmark one.
 
 These are the baseline numbers the weekly tuning and the bake-off compare against; a change
-that moves the test recall by less than 5 points is noise at this case count.
+that moves the test recall by less than 5 points is noise at this case count. The run outputs
+(summaries, errors, the per-case ranked lists of the runs a comparison needs, the bake-off table)
+are kept under `benchmarks/android/2026-10-20/`, one dated directory per benchmark run.
 
 Bake-off of the same day on the validation split (255 positives, 130 negatives), each index built
 offline from the raw store on a MacBook (CPU, q8), every chunk embedded:

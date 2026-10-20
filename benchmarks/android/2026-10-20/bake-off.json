@@ -1,0 +1,62 @@
+{
+  "split": "validation",
+  "cases": 385,
+  "threshold": 0.35,
+  "rows": [
+    {
+      "name": "all-MiniLM-L6-v2",
+      "modelKey": "Xenova/all-MiniLM-L6-v2@751bff37182d3f1213fa05d7196b954e230abad9@q8@mean",
+      "buildSeconds": 306.044930291,
+      "indexBytes": 90849280,
+      "chunksPerSecond": 135.40495495415382,
+      "recallAt5": 29.019607843137255,
+      "mrr": 0.19035480859010276,
+      "gatePrecision": 66.49214659685863,
+      "gateSpecificity": 0
+    },
+    {
+      "name": "bge-small-en-v1.5",
+      "modelKey": "Xenova/bge-small-en-v1.5@ea104dacec62c0de699686887e3f920caeb4f3e3@q8@cls",
+      "buildSeconds": 514.416016167,
+      "indexBytes": 90849280,
+      "chunksPerSecond": 80.55736737898714,
+      "recallAt5": 30.58823529411765,
+      "mrr": 0.20337846249610975,
+      "gatePrecision": 66.57963446475196,
+      "gateSpecificity": 0
+    },
+    {
+      "name": "snowflake-arctic-embed-s",
+      "modelKey": "Snowflake/snowflake-arctic-embed-s@e596f507467533e48a2e17c007f0e1dacc837b33@q8@cls@q=Represent this sentence for searching relevant passages: @d=",
+      "buildSeconds": 536.7757585840001,
+      "indexBytes": 90849280,
+      "chunksPerSecond": 77.20169798523986,
+      "recallAt5": 34.90196078431372,
+      "mrr": 0.21458450046685373,
+      "gatePrecision": 66.57963446475196,
+      "gateSpecificity": 0
+    },
+    {
+      "name": "nomic-embed-text-v1.5",
+      "modelKey": "nomic-ai/nomic-embed-text-v1.5@e9b6763023c676ca8431644204f50c2b100d9aab@q8@mean@q=search_query: @d=search_document: ",
+      "buildSeconds": 1882.8794332079997,
+      "indexBytes": 106983424,
+      "chunksPerSecond": 22.00884415068236,
+      "recallAt5": 29.80392156862745,
+      "mrr": 0.18550108932461878,
+      "gatePrecision": 66.57963446475196,
+      "gateSpecificity": 0
+    },
+    {
+      "name": "embeddinggemma-300m",
+      "modelKey": "onnx-community/embeddinggemma-300m-ONNX@5090578d9565bb06545b4552f76e6bc2c93e4a66@q8@mean@q=task: search result | query: @d=title: none | text: ",
+      "buildSeconds": 1833.6111781659997,
+      "indexBytes": 106983424,
+      "chunksPerSecond": 22.60021126259101,
+      "recallAt5": 28.627450980392158,
+      "mrr": 0.19204326174914418,
+      "gatePrecision": 66.57894736842105,
+      "gateSpecificity": 0.78125
+    }
+  ]
+}

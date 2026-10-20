@@ -1,0 +1,24 @@
+{
+  "counts": {
+    "byRelation": {
+      "docs": 324,
+      "duplicate": 259,
+      "fixed-by": 743,
+      "forum": 8,
+      "negative": 591
+    },
+    "byLabelSource": {
+      "comment:docs-link": 324,
+      "timeline:marked-duplicate": 76,
+      "comment:duplicate-of": 183,
+      "pull:closing-reference": 743,
+      "comment:forum-link": 8,
+      "negative:fixed-only": 591
+    }
+  },
+  "dropped": {
+    "unknown-target": 61,
+    "closed-before-pull": 6
+  },
+  "negativesPool": 681
+}

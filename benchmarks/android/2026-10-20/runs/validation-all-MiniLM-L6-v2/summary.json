@@ -1,0 +1,200 @@
+{
+  "run": {
+    "mode": "production",
+    "cases": 385,
+    "scored": 383,
+    "errors": 2,
+    "modelKey": "Xenova/all-MiniLM-L6-v2@751bff37182d3f1213fa05d7196b954e230abad9@q8@mean",
+    "builtAt": "2026-10-20T09:52:47.132Z",
+    "startedAt": "2026-10-20T11:35:16.427Z",
+    "durationSeconds": 77.81,
+    "threshold": 0.35
+  },
+  "retrieval": {
+    "all": {
+      "n": 255,
+      "recallAt5": 29.019607843137255,
+      "mrr": 0.20202458761282302
+    },
+    "byRelation": {
+      "docs": {
+        "n": 53,
+        "recallAt5": 16.9811320754717,
+        "mrr": 0.11704851752021563
+      },
+      "duplicate": {
+        "n": 49,
+        "recallAt5": 48.97959183673469,
+        "mrr": 0.33021541950113376
+      },
+      "fixed-by": {
+        "n": 153,
+        "recallAt5": 26.797385620915033,
+        "mrr": 0.19040616246498593
+      }
+    },
+    "byExpectedSource": {
+      "docs": {
+        "n": 53,
+        "recallAt5": 16.9811320754717,
+        "mrr": 0.11704851752021563
+      },
+      "issue": {
+        "n": 48,
+        "recallAt5": 50,
+        "mrr": 0.3370949074074074
+      },
+      "pull": {
+        "n": 154,
+        "recallAt5": 26.623376623376622,
+        "mrr": 0.1891697588126159
+      }
+    },
+    "byLabelSource": {
+      "comment:docs-link": {
+        "n": 53,
+        "recallAt5": 16.9811320754717,
+        "mrr": 0.11704851752021563
+      },
+      "timeline:marked-duplicate": {
+        "n": 12,
+        "recallAt5": 50,
+        "mrr": 0.32222222222222224
+      },
+      "comment:duplicate-of": {
+        "n": 37,
+        "recallAt5": 48.648648648648646,
+        "mrr": 0.3328078078078077
+      },
+      "pull:closing-reference": {
+        "n": 153,
+        "recallAt5": 26.797385620915033,
+        "mrr": 0.19040616246498593
+      }
+    }
+  },
+  "gate": {
+    "at": {
+      "threshold": 0.35,
+      "precision": 66.49214659685863,
+      "specificity": 0,
+      "sensitivity": 99.6078431372549,
+      "positives": 255,
+      "negatives": 128
+    },
+    "sweep": [
+      {
+        "threshold": 0.3,
+        "precision": 66.49214659685863,
+        "specificity": 0,
+        "sensitivity": 99.6078431372549,
+        "positives": 255,
+        "negatives": 128
+      },
+      {
+        "threshold": 0.35,
+        "precision": 66.49214659685863,
+        "specificity": 0,
+        "sensitivity": 99.6078431372549,
+        "positives": 255,
+        "negatives": 128
+      },
+      {
+        "threshold": 0.4,
+        "precision": 66.66666666666667,
+        "specificity": 0.78125,
+        "sensitivity": 99.6078431372549,
+        "positives": 255,
+        "negatives": 128
+      },
+      {
+        "threshold": 0.45,
+        "precision": 66.66666666666667,
+        "specificity": 0.78125,
+        "sensitivity": 99.6078431372549,
+        "positives": 255,
+        "negatives": 128
+      },
+      {
+        "threshold": 0.5,
+        "precision": 66.84210526315789,
+        "specificity": 1.5625,
+        "sensitivity": 99.6078431372549,
+        "positives": 255,
+        "negatives": 128
+      },
+      {
+        "threshold": 0.55,
+        "precision": 66.84491978609626,
+        "specificity": 3.125,
+        "sensitivity": 98.03921568627452,
+        "positives": 255,
+        "negatives": 128
+      },
+      {
+        "threshold": 0.6,
+        "precision": 66.9467787114846,
+        "specificity": 7.8125,
+        "sensitivity": 93.72549019607843,
+        "positives": 255,
+        "negatives": 128
+      },
+      {
+        "threshold": 0.65,
+        "precision": 66.996699669967,
+        "specificity": 21.875,
+        "sensitivity": 79.6078431372549,
+        "positives": 255,
+        "negatives": 128
+      },
+      {
+        "threshold": 0.7,
+        "precision": 68.62745098039215,
+        "specificity": 50,
+        "sensitivity": 54.90196078431372,
+        "positives": 255,
+        "negatives": 128
+      },
+      {
+        "threshold": 0.75,
+        "precision": 69.6969696969697,
+        "specificity": 76.5625,
+        "sensitivity": 27.058823529411764,
+        "positives": 255,
+        "negatives": 128
+      },
+      {
+        "threshold": 0.8,
+        "precision": 66.66666666666667,
+        "specificity": 91.40625,
+        "sensitivity": 8.627450980392156,
+        "positives": 255,
+        "negatives": 128
+      },
+      {
+        "threshold": 0.85,
+        "precision": 83.33333333333333,
+        "specificity": 98.4375,
+        "sensitivity": 3.9215686274509802,
+        "positives": 255,
+        "negatives": 128
+      },
+      {
+        "threshold": 0.9,
+        "precision": 100,
+        "specificity": 100,
+        "sensitivity": 1.9607843137254901,
+        "positives": 255,
+        "negatives": 128
+      },
+      {
+        "threshold": 0.95,
+        "precision": 100,
+        "specificity": 100,
+        "sensitivity": 0.7843137254901961,
+        "positives": 255,
+        "negatives": 128
+      }
+    ]
+  }
+}
