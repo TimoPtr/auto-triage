@@ -15,7 +15,8 @@
     "run-eval": "node src/cli/run-eval.ts",
     "compare-eval": "node src/cli/compare-eval.ts",
     "bake-off": "node src/cli/bake-off.ts",
-    "prepare-triage": "node src/cli/prepare-triage.ts"
+    "prepare-triage": "node src/cli/prepare-triage.ts",
+    "render-verdict": "node src/cli/render-verdict.ts"
   },
   "dependencies": {
     "@huggingface/transformers": "^4.2.0",
