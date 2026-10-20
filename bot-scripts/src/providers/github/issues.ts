@@ -59,7 +59,7 @@ function commentChunks(comment: ApiComment, firstSeq: number, reporterLogin: str
 }
 
 /** What the raw store holds for an issue; `complete` is false when comments were not wanted at fetch time. */
-interface StoredIssue { issue: ApiIssue; comments: ApiComment[]; complete: boolean }
+export interface StoredIssue { issue: ApiIssue; comments: ApiComment[]; complete: boolean }
 
 /**
  * Comments of one issue: from the raw store when the issue did not change and

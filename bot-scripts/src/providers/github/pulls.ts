@@ -13,7 +13,7 @@ const MAX_FILES = 50;
 const MAX_HEAD_CHARS = 200;
 const LINKED_ISSUE = /\b(?:close[sd]?|fix(?:e[sd])?|resolve[sd]?)\s+(?:[\w.-]+\/[\w.-]+)?#(\d+)/gi;
 
-interface ApiPull {
+export interface ApiPull {
   number: number; title: string; state: string; merged_at: string | null; closed_at: string | null; html_url: string;
   user?: { login?: string; type?: string }; author_association?: string; labels?: { name: string }[];
   created_at: string; updated_at: string; draft: boolean; base?: { ref?: string }; body?: string | null;
@@ -24,7 +24,7 @@ interface ApiReviewComment {
 }
 interface PullDetails { reviewComments: ApiReviewComment[]; files: string[] }
 /** What the raw store holds for a pull request; `complete` is false when reviews were not wanted at fetch time. */
-interface StoredPull extends PullDetails { pull: ApiPull; complete: boolean }
+export interface StoredPull extends PullDetails { pull: ApiPull; complete: boolean }
 
 function isBot(pull: ApiPull): boolean {
   return pull.user?.type === 'Bot' || (pull.user?.login ?? '').endsWith('[bot]');
