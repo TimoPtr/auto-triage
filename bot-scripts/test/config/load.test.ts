@@ -78,3 +78,9 @@ test('accepts embedding prefixes and rejects a non-string one', () => {
   (config.embedding as unknown as Record<string, unknown>).queryPrefix = 3;
   assert.throws(() => validateConfig(config), ConfigError);
 });
+
+test('accepts triage.staged', () => {
+  const config = loadConfig(fixture);
+  config.triage = { staged: true };
+  assert.equal(validateConfig(config).triage.staged, true);
+});

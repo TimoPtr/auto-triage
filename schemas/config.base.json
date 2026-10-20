@@ -64,6 +64,7 @@
           }
         },
         "recheckLabel": { "type": "string", "default": "ai-recheck" },
+        "staged": { "type": "boolean", "default": false },
         "nextSteps": { "type": "object", "additionalProperties": { "type": "string", "format": "uri" } }
       }
     },
