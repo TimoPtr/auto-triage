@@ -63,3 +63,22 @@ test('returns null when nothing is visible and parses its own marker', () => {
   assert.deepEqual(parseMarker(`${marker({ runId: '42', tier: 'medium', issue: 3 })}\nrest`), { runId: '42', tier: 'medium', issue: 3 });
   assert.equal(parseMarker('plain comment'), null);
 });
+
+test('escapes markdown, html and mentions in titles and headings', () => {
+  const hostile = toExcerpt(result({ source: 'docs', origin: 'o/docs', sourceId: 'h', url: 'https://docs.example/h', title: 'Crash [see](http://evil) @admin <b>x</b>', heading: '*bold* `code`', createdAt: '1970-01-01T00:00:00Z', outcome: null }), 7, []);
+  const line = excerptLine(hostile, 'o/r');
+  assert.equal(line, '- Docs: [Crash \\[see\\]\\(http://evil\\) admin x › \\*bold\\* \\`code\\`](https://docs.example/h)');
+  const issueLine = excerptLine(toExcerpt(result({ title: 'Ping @someone\nnext line' }), 8, []), 'o/r');
+  assert.equal(issueLine, '- #5610 Ping someone next line (closed, completed, Jan 2025)');
+});
+
+test('encodes unsafe characters in urls and drops non-http ones', () => {
+  const spaced = toExcerpt(result({ source: 'docs', url: 'https://docs.example/a b(c)<d>', title: 'Spaced', createdAt: '1970-01-01T00:00:00Z', outcome: null }), 9, []);
+  assert.equal(excerptLine(spaced, 'o/r'), '- Docs: [Spaced](https://docs.example/a%20b%28c%29%3Cd%3E)');
+  const bad = toExcerpt(result({ source: 'forum', url: 'javascript:alert(1)', title: 'Bad', outcome: null }), 10, []);
+  assert.equal(excerptLine(bad, 'o/r'), '- Forum: Bad (Jan 2025)');
+});
+
+test('escapes markdown in the answer and neutralises issue references and bare links', () => {
+  assert.equal(sanitizeAnswer('Fix in #5610 and www.evil.example //cdn.evil/x *bold* _u_ `code` [x](y) a|b'), 'Fix in `#5610` and \\*bold\\* \\_u\\_ \\`code\\` x a\\|b');
+});

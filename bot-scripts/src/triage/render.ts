@@ -20,13 +20,39 @@ export function parseMarker(body: string): { runId: string; tier: string; issue:
   return m ? { runId: m[1], tier: m[2], issue: Number(m[3]) } : null;
 }
 
-/** Plain text only: no html, no links, no mentions. */
+const MARKDOWN_SPECIALS = /[\\`*_[\]()<>!|~]/g;
+
+/** Index text shown inline: no html, no markdown syntax, no mentions, one line. */
+export function escapeInline(text: string): string {
+  return text
+    .replace(/<[^>]*>/g, '')
+    .replace(/@(?=\w)/g, '')
+    .replace(MARKDOWN_SPECIALS, (c) => `\\${c}`)
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+/** An index url safe to place in a markdown link, or null when it is not http(s). */
+export function safeUrl(url: string): string | null {
+  let parsed: URL;
+  try { parsed = new URL(url); } catch { return null; }
+  if (parsed.protocol !== 'https:' && parsed.protocol !== 'http:') return null;
+  return parsed.href.replace(/[\s()<>]/g, (c) => `%${c.charCodeAt(0).toString(16).toUpperCase().padStart(2, '0')}`);
+}
+
+/**
+ * Model text as plain prose: html removed, links reduced to their label, url-like
+ * tokens dropped, mentions broken, markdown escaped, issue references kept out of
+ * GitHub's autolinking by a code span.
+ */
 export function sanitizeAnswer(text: string): string {
   return text
     .replace(/<[^>]*>/g, '')
     .replace(/\[([^\]]*)\]\([^)]*\)/g, '$1')
-    .replace(/https?:\/\/\S+/g, '')
+    .replace(/(https?:\/\/|\/\/|www\.)\S+/g, '')
     .replace(/@(?=\w)/g, '')
+    .replace(MARKDOWN_SPECIALS, (c) => `\\${c}`)
+    .replace(/#(\d+)/g, '`#$1`')
     .split('\n').map((line) => line.replace(/[ \t]{2,}/g, ' ').trim()).join('\n')
     .replace(/\n{3,}/g, '\n\n')
     .trim();
@@ -51,18 +77,20 @@ function parts(excerpt: Excerpt): string {
 
 /** One bullet per excerpt; same-repository issues and pulls use the `#n` form GitHub links itself. */
 export function excerptLine(excerpt: Excerpt, repository: string): string {
-  const link = `[${excerpt.title}](${excerpt.url})`;
+  const title = escapeInline(excerpt.title);
+  const url = safeUrl(excerpt.url);
+  const link = (label: string) => (url ? `[${label}](${url})` : label);
   switch (excerpt.source) {
     case 'issue':
     case 'pull': {
       const number = /\/(\d+)$/.exec(excerpt.url)?.[1];
-      const ref = excerpt.origin === repository && number ? `#${number} ${excerpt.title}` : link;
+      const ref = excerpt.origin === repository && number ? `#${number} ${title}` : link(title);
       return `- ${ref}${parts(excerpt)}`;
     }
-    case 'forum': return `- Forum: ${link}${parts(excerpt)}`;
-    case 'discussion': return `- Discussion: ${link}${parts(excerpt)}`;
-    case 'docs': return `- Docs: [${excerpt.heading ? `${excerpt.title} › ${excerpt.heading}` : excerpt.title}](${excerpt.url})`;
-    default: return `- ${link}${parts(excerpt)}`;
+    case 'forum': return `- Forum: ${link(title)}${parts(excerpt)}`;
+    case 'discussion': return `- Discussion: ${link(title)}${parts(excerpt)}`;
+    case 'docs': return `- Docs: ${link(excerpt.heading ? `${title} › ${escapeInline(excerpt.heading)}` : title)}`;
+    default: return `- ${link(title)}${parts(excerpt)}`;
   }
 }
 
