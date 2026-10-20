@@ -189,6 +189,8 @@ safe-outputs:
           type: string
           default: ""
       runs-on: ubuntu-latest
+      # Same gate as gh-aw's own safe-output job: nothing is rendered or posted unless the threat detection passed.
+      if: needs.detection.result == 'success'
       permissions:
         contents: read
         issues: write
