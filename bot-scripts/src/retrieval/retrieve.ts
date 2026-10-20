@@ -111,7 +111,7 @@ export async function retrieve(db: DatabaseSync, embedder: Embedder, question: s
   const { where, params } = filters(options);
 
   const { embedText, lexicalText } = prepareQuestion(question);
-  const [vector] = await embedder.embed([embedText]);
+  const [vector] = await embedder.embed([embedText], { role: 'query' });
   const knn = denseCandidates(db, vector, candidates, where, params);
   // the gate reads the real best hit; the floor only decides what reaches the fusion
   const bestSimilarity = knn.length ? cosineFromL2(knn[0].distance) : 0;

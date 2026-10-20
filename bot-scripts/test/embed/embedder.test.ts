@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { createEmbedder } from '../../src/embed/embedder.ts';
+import { createEmbedder, modelKeyOf } from '../../src/embed/embedder.ts';
 import type { EmbeddingConfig } from '../../src/config/types.ts';
 
 const config: EmbeddingConfig = { model: 'fake/model', revision: 'abc', dtype: 'q8', dimensions: 3, pooling: 'cls' };
@@ -48,4 +48,15 @@ test('embeds nothing without loading the model', async () => {
   const embedder = createEmbedder(config, { pipelineFactory: fakeFactory(calls) });
   assert.deepEqual(await embedder.embed([]), []);
   assert.equal(calls.length, 0);
+});
+
+test('prepends the role prefix and keeps the key stable without prefixes', async () => {
+  const calls = [];
+  const prefixed: EmbeddingConfig = { model: 'm', revision: 'r', dtype: 'q8', dimensions: 3, pooling: 'mean', queryPrefix: 'search_query: ', documentPrefix: 'search_document: ' };
+  const embedder = createEmbedder(prefixed, { pipelineFactory: fakeFactory(calls) });
+  await embedder.embed(['a'], { role: 'query' });
+  await embedder.embed(['b']);
+  assert.deepEqual(calls.filter((c) => c.texts).flatMap((c) => c.texts), ['search_query: a', 'search_document: b']);
+  assert.equal(embedder.modelKey, 'm@r@q8@mean@q=search_query: @d=search_document: ');
+  assert.equal(modelKeyOf({ ...prefixed, queryPrefix: undefined, documentPrefix: undefined }), 'm@r@q8@mean');
 });

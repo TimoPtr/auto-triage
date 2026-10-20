@@ -1,9 +1,12 @@
 import type { EmbeddingConfig } from '../config/types.ts';
 
+/** Which prefix a text gets: a question or an indexed chunk. */
+export type EmbedRole = 'query' | 'document';
+
 export interface Embedder {
   modelKey: string;
   dimensions: number;
-  embed(texts: string[]): Promise<Float32Array[]>;
+  embed(texts: string[], options?: { role?: EmbedRole }): Promise<Float32Array[]>;
 }
 
 /** The subset of a transformers.js feature-extraction pipeline the embedder relies on. */
@@ -29,9 +32,10 @@ const transformersPipeline: PipelineFactory = async (task, model, options) => {
   return (await pipeline(task as 'feature-extraction', model, options as never)) as unknown as Extractor;
 };
 
-/** Builds the model key recorded in the index meta. Any part changing invalidates the index. */
+/** Builds the model key recorded in the index meta. Any part changing invalidates the index; prefixes appear only when set. */
 export function modelKeyOf(config: EmbeddingConfig): string {
-  return `${config.model}@${config.revision}@${config.dtype}@${config.pooling}`;
+  const key = `${config.model}@${config.revision}@${config.dtype}@${config.pooling}`;
+  return config.queryPrefix || config.documentPrefix ? `${key}@q=${config.queryPrefix ?? ''}@d=${config.documentPrefix ?? ''}` : key;
 }
 
 export interface EmbedderOptions {
@@ -55,8 +59,10 @@ export function createEmbedder(config: EmbeddingConfig, { pipelineFactory = tran
   return {
     modelKey: modelKeyOf(config),
     dimensions: config.dimensions,
-    async embed(texts) {
-      if (texts.length === 0) return [];
+    async embed(raw, { role = 'document' } = {}) {
+      if (raw.length === 0) return [];
+      const prefix = (role === 'query' ? config.queryPrefix : config.documentPrefix) ?? '';
+      const texts = raw.map((t) => prefix + t);
       const extractor = await load();
       const order = texts.map((_, i) => i).sort((a, b) => texts[a].length - texts[b].length);
       const results: Float32Array[] = new Array(texts.length);

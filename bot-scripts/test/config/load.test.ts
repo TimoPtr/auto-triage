@@ -69,3 +69,12 @@ test('a file entry needs a known kind', () => {
   config.providers.github['home-assistant/android'].files.push({ path: 'x', kind: 'pdf' } as never);
   assert.throws(() => validateConfig(config), ConfigError);
 });
+
+test('accepts embedding prefixes and rejects a non-string one', () => {
+  const config = loadConfig(fixture);
+  config.embedding.queryPrefix = 'search_query: ';
+  config.embedding.documentPrefix = 'search_document: ';
+  assert.equal(validateConfig(config).embedding.queryPrefix, 'search_query: ');
+  (config.embedding as unknown as Record<string, unknown>).queryPrefix = 3;
+  assert.throws(() => validateConfig(config), ConfigError);
+});

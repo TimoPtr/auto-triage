@@ -72,6 +72,10 @@ export interface EmbeddingConfig {
   dtype: 'fp32' | 'fp16' | 'q8';
   dimensions: number;
   pooling: 'cls' | 'mean';
+  /** Prepended to a question before embedding; some models expect one (`search_query: `). */
+  queryPrefix?: string;
+  /** Prepended to every indexed chunk before embedding. */
+  documentPrefix?: string;
 }
 
 export interface PeerConfig {
