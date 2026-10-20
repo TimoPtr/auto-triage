@@ -5,7 +5,7 @@ import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { loadConfig } from '../config/load.ts';
 import { readHandoff, HandoffError } from '../triage/handoff.ts';
-import { readAgentOutput, parseVerdict, tierOf, VerdictError } from '../triage/verdict.ts';
+import { readAgentOutput, parseVerdict, tierOf, demote, VerdictError } from '../triage/verdict.ts';
 import { renderComment } from '../triage/render.ts';
 import { triageSettings } from '../triage/settings.ts';
 import { writeOutputs } from './index-status.ts';
@@ -23,19 +23,22 @@ if (import.meta.url === pathToFileURL(process.argv[1] ?? '').href) {
     const { staged } = triageSettings(loadConfig(values.config));
     const handoff = readHandoff(values.handoff);
     const verdict = parseVerdict(readAgentOutput(values['agent-output']), handoff);
-    const tier = tierOf(verdict.confidence, handoff.thresholds);
+    const rawTier = tierOf(verdict.confidence, handoff.thresholds);
+    const demotion = handoff.retrieval.demote;
+    const tier = demotion ? demote(rawTier) : rawTier;
     const comment = renderComment({ handoff, verdict, tier, runId: values['run-id'] });
     const post = comment !== null && !staged;
     mkdirSync(values['out-dir'], { recursive: true });
     const commentPath = join(values['out-dir'], 'comment.md');
     if (comment !== null) writeFileSync(commentPath, comment);
-    writeFileSync(join(values['out-dir'], 'verdict.json'), JSON.stringify({ confidence: verdict.confidence, tier, duplicates: verdict.duplicates, related: verdict.related, component: verdict.component, notes: verdict.notes, staged, posted: post }, null, 2));
+    writeFileSync(join(values['out-dir'], 'verdict.json'), JSON.stringify({ confidence: verdict.confidence, tier, duplicates: verdict.duplicates, related: verdict.related, component: verdict.component, notes: verdict.notes, staged, posted: post, demoted: demotion !== null, demotedFrom: demotion ? rawTier : null }, null, 2));
     writeOutputs({ tier, post, 'comment-path': comment !== null ? commentPath : '' });
     appendSummary([
       `### Triage verdict for #${handoff.issue.number}`, '',
       `- tier: ${tier} (confidence ${verdict.confidence}, answer from ${handoff.thresholds.answer}, links from ${handoff.thresholds.links})`,
       `- duplicates: ${verdict.duplicates.join(', ') || 'none'}; related: ${verdict.related.join(', ') || 'none'}`,
       `- component: ${verdict.component ?? 'unknown'}`,
+      ...(demotion ? [`- demoted from ${rawTier}: resembles suppressed issue #${demotion.issue} (similarity ${demotion.similarity.toFixed(2)})`] : []),
       ...verdict.notes.map((n) => `- note: ${n}`),
       ...(comment === null ? ['', 'no comment for this tier'] : [...(staged ? ['', 'staged: the comment below was not posted'] : []), '', '````markdown', comment.trimEnd(), '````']),
     ]);

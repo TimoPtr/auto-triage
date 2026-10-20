@@ -65,6 +65,7 @@
         },
         "recheckLabel": { "type": "string", "default": "ai-recheck" },
         "staged": { "type": "boolean", "default": false },
+        "suppressSimilarity": { "type": "number", "minimum": 0, "maximum": 1, "default": 0.8 },
         "nextSteps": { "type": "object", "additionalProperties": { "type": "string", "format": "uri" } }
       }
     },

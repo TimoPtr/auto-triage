@@ -84,3 +84,9 @@ test('accepts triage.staged', () => {
   config.triage = { staged: true };
   assert.equal(validateConfig(config).triage.staged, true);
 });
+
+test('rejects a suppressSimilarity above 1', () => {
+  const config = loadConfig(fixture);
+  config.triage = { suppressSimilarity: 1.5 };
+  assert.throws(() => validateConfig(config), ConfigError);
+});

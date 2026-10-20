@@ -18,9 +18,9 @@ const handoffPath = join(tmp, 'handoff.json');
 writeFileSync(handoffPath, JSON.stringify(sampleHandoff()));
 const agentOutput = (items: unknown[]) => { const p = join(tmp, `agent-${Math.random().toString(36).slice(2)}.json`); writeFileSync(p, JSON.stringify({ items })); return p; };
 
-function run(config: string, agent: string, name: string) {
+function run(config: string, agent: string, name: string, handoff = handoffPath) {
   const outDir = join(tmp, name); const outputs = join(tmp, `${name}.outputs`); const summary = join(tmp, `${name}.summary.md`);
-  const r = spawnSync(process.execPath, [cli, '--config', config, '--handoff', handoffPath, '--agent-output', agent, '--out-dir', outDir, '--run-id', '77'], { env: { ...process.env, GITHUB_OUTPUT: outputs, GITHUB_STEP_SUMMARY: summary }, encoding: 'utf8' });
+  const r = spawnSync(process.execPath, [cli, '--config', config, '--handoff', handoff, '--agent-output', agent, '--out-dir', outDir, '--run-id', '77'], { env: { ...process.env, GITHUB_OUTPUT: outputs, GITHUB_STEP_SUMMARY: summary }, encoding: 'utf8' });
   return { ...r, outDir, outputs: existsSync(outputs) ? readFileSync(outputs, 'utf8') : '', summary: existsSync(summary) ? readFileSync(summary, 'utf8') : '' };
 }
 
@@ -55,4 +55,17 @@ test('posts nothing for a low tier and fails loudly on a verdict without confide
   assert.equal(none.status, 1);
   assert.match(none.stderr, /post_triage_verdict/);
   assert.match(none.summary, /did not call post_triage_verdict/);
+});
+
+test('lowers the tier when the handoff marks a demotion', () => {
+  const demoted = join(tmp, 'handoff-demoted.json');
+  const handoff = sampleHandoff(); handoff.retrieval.demote = { issue: 4242, similarity: 0.91 };
+  writeFileSync(demoted, JSON.stringify(handoff));
+  const r = run(configPath, agentOutput([{ type: 'post_triage_verdict', confidence: '80', duplicates: '0', answer: 'Reboot fixes it.' }]), 'demoted', demoted);
+  assert.equal(r.status, 0, r.stderr);
+  assert.match(r.outputs, /tier=medium\npost=true/);
+  const verdict = JSON.parse(readFileSync(join(r.outDir, 'verdict.json'), 'utf8'));
+  assert.equal(verdict.demoted, true); assert.equal(verdict.tier, 'medium');
+  assert.match(r.summary, /demoted from high: resembles suppressed issue #4242/);
+  assert.ok(!readFileSync(join(r.outDir, 'comment.md'), 'utf8').includes('Reboot fixes it.'));
 });

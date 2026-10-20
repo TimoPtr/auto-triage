@@ -66,6 +66,11 @@ export function parseVerdict(agentOutput: unknown, handoff: Handoff): Verdict {
   return { confidence, duplicates, related, answer: text(last.answer, ANSWER_MAX_CHARS), component: text(last.component), notes };
 }
 
+/** One tier down, for a verdict that resembles a suppressed issue; low stays low. */
+export function demote(tier: Tier): Tier {
+  return tier === 'high' ? 'medium' : 'low';
+}
+
 export function tierOf(confidence: number, thresholds: { answer: number; links: number }): Tier {
   if (confidence >= thresholds.answer) return 'high';
   if (confidence >= thresholds.links) return 'medium';

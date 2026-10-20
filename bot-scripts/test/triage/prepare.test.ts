@@ -124,3 +124,17 @@ test('asks for live lists only after the gate, with the cleaned question', async
   assert.ok(calls[0].length <= LIVE_QUERY_MAX_CHARS);
   assert.ok(calls[0].startsWith('Widget stops updating'));
 });
+
+test('demotes one tier when a suppressed issue of the repository is retrieved above the floor', async () => {
+  const hit = await prepareTriage({ ...base(), suppressed: new Set([1]) });
+  assert.deepEqual(hit.handoff.retrieval.demote?.issue, 1);
+  assert.ok(hit.handoff.retrieval.demote.similarity >= 0.9);
+  const otherRepo = await prepareTriage({ ...base(), repository: 'other/repo', suppressed: new Set([1]) });
+  assert.equal(otherRepo.handoff.retrieval.demote, null);
+  const unknown = await prepareTriage({ ...base(), suppressed: new Set([999]) });
+  assert.equal(unknown.handoff.retrieval.demote, null);
+  // issue 7 reaches the excerpts through its text only, far below the floor
+  const belowFloor = await prepareTriage({ ...base(), issue: issueOf({ title: 'Widget crash', body: 'Widget crash\n\n```\nE/EntityWidget: refresh failed\n```' }), suppressed: new Set([7]) });
+  assert.ok(belowFloor.handoff.excerpts.some((e) => e.url.endsWith('/issue/7')));
+  assert.equal(belowFloor.handoff.retrieval.demote, null);
+});

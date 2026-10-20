@@ -76,11 +76,17 @@
     "retrieval": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["bestSimilarity", "minSimilarity", "indexBuiltAt"],
+      "required": ["bestSimilarity", "minSimilarity", "indexBuiltAt", "demote"],
       "properties": {
         "bestSimilarity": { "type": "number" },
         "minSimilarity": { "type": "number" },
-        "indexBuiltAt": { "type": ["string", "null"] }
+        "indexBuiltAt": { "type": ["string", "null"] },
+        "demote": {
+          "type": ["object", "null"],
+          "additionalProperties": false,
+          "required": ["issue", "similarity"],
+          "properties": { "issue": { "type": "integer", "minimum": 1 }, "similarity": { "type": "number" } }
+        }
       }
     }
   }

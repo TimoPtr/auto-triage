@@ -1,7 +1,7 @@
 import type { DatabaseSync } from 'node:sqlite';
 import type { Config } from '../config/types.ts';
 import type { Embedder } from '../embed/embedder.ts';
-import { retrieve } from '../retrieval/retrieve.ts';
+import { retrieve, type RetrievalResults } from '../retrieval/retrieve.ts';
 import type { RankedList } from '../retrieval/rrf.ts';
 import { readMeta } from '../store/db.ts';
 import { cleanIssueText } from '../text/clean.ts';
@@ -24,7 +24,20 @@ export interface PrepareInput {
   repository: string;
   /** Extra ranked lists (a live forum search); a function is called only once the gate has passed, with the cleaned question. */
   liveLists?: RankedList[] | ((question: string) => Promise<RankedList[]>);
+  /** Issue numbers of the repository whose earlier bot comment was downvoted or dismissed. */
+  suppressed?: Set<number>;
   now?: Date;
+}
+
+/** The first retrieved issue of the repository that is suppressed and at or above the floor. */
+function demotionOf(results: RetrievalResults, repository: string, suppressed: Set<number>, floor: number): { issue: number; similarity: number } | null {
+  for (const r of results) {
+    if (r.source !== 'issue' || r.origin !== repository) continue;
+    const number = Number(r.sourceId);
+    const similarity = r.scores.itemSimilarity ?? r.scores.similarity;
+    if (suppressed.has(number) && similarity !== null && similarity >= floor) return { issue: number, similarity };
+  }
+  return null;
 }
 
 /** `#<number>` of every merged pull request of `origin` whose body links the issue, ascending. */
@@ -55,7 +68,7 @@ function gate(issue: TriageIssue, question: string, db: DatabaseSync | null, emb
  * Decides whether the agent runs and, when it does, builds the handoff: the
  * cleaned issue and the closest excerpts, with the issue itself excluded.
  */
-export async function prepareTriage({ config, db, embedder, issue, repository, liveLists = [], now = new Date() }: PrepareInput): Promise<{ decision: TriageDecision; handoff: Handoff | null }> {
+export async function prepareTriage({ config, db, embedder, issue, repository, liveLists = [], suppressed = new Set(), now = new Date() }: PrepareInput): Promise<{ decision: TriageDecision; handoff: Handoff | null }> {
   const settings = triageSettings(config);
   const cleaned = cleanIssueText(issue.body);
   const question = [issue.title, cleaned.text].filter(Boolean).join('\n\n');
@@ -79,7 +92,7 @@ export async function prepareTriage({ config, db, embedder, issue, repository, l
     issue: { number: issue.number, title: issue.title, body: cleaned.text, logs: cleaned.logs, labels: issue.labels, createdAt: issue.createdAt },
     excerpts: results.map((r, id) => toExcerpt(r, id, r.source === 'issue' ? fixedBy(db, r.origin, Number(r.sourceId)) : [])),
     thresholds: { answer: settings.answer, links: settings.links },
-    retrieval: { bestSimilarity: results.bestSimilarity, minSimilarity: settings.minSimilarity, indexBuiltAt: readMeta(db).built_at ?? null },
+    retrieval: { bestSimilarity: results.bestSimilarity, minSimilarity: settings.minSimilarity, indexBuiltAt: readMeta(db).built_at ?? null, demote: demotionOf(results, repository, suppressed, settings.suppressSimilarity) },
   };
   return { decision: { shouldContinue: true, reason: 'ok', bestSimilarity: results.bestSimilarity }, handoff };
 }

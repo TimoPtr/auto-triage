@@ -92,6 +92,8 @@ export interface TriageConfig {
   nextSteps?: Record<string, string>;
   /** Write the triage comment to the run summary instead of the issue. */
   staged?: boolean;
+  /** Similarity to a suppressed issue from which the verdict is demoted one tier. */
+  suppressSimilarity?: number;
 }
 
 export interface Config {

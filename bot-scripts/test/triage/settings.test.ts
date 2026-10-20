@@ -8,12 +8,13 @@ const fixture = fileURLToPath(new URL('../fixtures/config/android.yaml', import.
 const baseConfig = () => ({ ...loadConfig(fixture), triage: undefined });
 
 test('applies the defaults when the triage block is absent', () => {
-  assert.deepEqual(triageSettings(baseConfig()), { minSimilarity: 0.35, answer: 75, links: 45, recheckLabel: 'ai-recheck', staged: false });
+  assert.deepEqual(triageSettings(baseConfig()), { minSimilarity: 0.35, answer: 75, links: 45, recheckLabel: 'ai-recheck', staged: false, suppressSimilarity: 0.8 });
 });
 
 test('reads the configured values and rejects links above answer', () => {
-  const config = { ...baseConfig(), triage: { minSimilarity: 0.5, confidence: { answer: 80, links: 50 }, staged: true } };
+  const config = { ...baseConfig(), triage: { minSimilarity: 0.5, confidence: { answer: 80, links: 50 }, staged: true, suppressSimilarity: 0.9 } };
   assert.equal(triageSettings(config).staged, true);
+  assert.equal(triageSettings(config).suppressSimilarity, 0.9);
   assert.equal(triageSettings(config).answer, 80);
   assert.equal(triageSettings(config).minSimilarity, 0.5);
   assert.throws(() => triageSettings({ ...config, triage: { confidence: { answer: 40, links: 50 } } }), ConfigError);

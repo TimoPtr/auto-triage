@@ -34,7 +34,8 @@ export interface Handoff {
   issue: HandoffIssue;
   excerpts: Excerpt[];
   thresholds: { answer: number; links: number };
-  retrieval: { bestSimilarity: number; minSimilarity: number; indexBuiltAt: string | null };
+  /** `demote` names a suppressed issue retrieved above the floor; the renderer lowers the tier for it. */
+  retrieval: { bestSimilarity: number; minSimilarity: number; indexBuiltAt: string | null; demote: { issue: number; similarity: number } | null };
 }
 
 export class HandoffError extends Error {

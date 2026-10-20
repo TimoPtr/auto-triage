@@ -5,6 +5,7 @@ export const DEFAULT_MIN_SIMILARITY = 0.35;
 export const DEFAULT_ANSWER_CONFIDENCE = 75;
 export const DEFAULT_LINKS_CONFIDENCE = 45;
 export const DEFAULT_RECHECK_LABEL = 'ai-recheck';
+export const DEFAULT_SUPPRESS_SIMILARITY = 0.8;
 
 export interface TriageSettings {
   minSimilarity: number;
@@ -15,6 +16,8 @@ export interface TriageSettings {
   recheckLabel: string;
   /** The comment goes to the run summary, never to the issue. */
   staged: boolean;
+  /** A retrieved suppressed issue at or above this similarity demotes the verdict one tier. */
+  suppressSimilarity: number;
 }
 
 /** The triage settings of a config with the defaults applied. */
@@ -26,6 +29,7 @@ export function triageSettings(config: Config): TriageSettings {
     links: triage.confidence?.links ?? DEFAULT_LINKS_CONFIDENCE,
     recheckLabel: triage.recheckLabel ?? DEFAULT_RECHECK_LABEL,
     staged: triage.staged ?? false,
+    suppressSimilarity: triage.suppressSimilarity ?? DEFAULT_SUPPRESS_SIMILARITY,
   };
   if (settings.links > settings.answer) throw new ConfigError('triage.confidence.links must not exceed triage.confidence.answer');
   return settings;

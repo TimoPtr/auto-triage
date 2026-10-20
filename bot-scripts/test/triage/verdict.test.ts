@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { parseVerdict, tierOf, readAgentOutput, VerdictError, ANSWER_MAX_CHARS } from '../../src/triage/verdict.ts';
+import { parseVerdict, tierOf, demote, readAgentOutput, VerdictError, ANSWER_MAX_CHARS } from '../../src/triage/verdict.ts';
 import { sampleHandoff } from './fixtures.ts';
 import type { Handoff } from '../../src/triage/handoff.ts';
 
@@ -54,4 +54,8 @@ test('reads a missing agent output as no items', () => {
     writeFileSync(join(tmp, 'out.json'), '{"items":[{"type":"post_triage_verdict","confidence":"1"}]}');
     assert.equal((readAgentOutput(join(tmp, 'out.json')) as { items: unknown[] }).items.length, 1);
   } finally { rmSync(tmp, { recursive: true, force: true }); }
+});
+
+test('demotes one tier and never below low', () => {
+  assert.equal(demote('high'), 'medium'); assert.equal(demote('medium'), 'low'); assert.equal(demote('low'), 'low');
 });
