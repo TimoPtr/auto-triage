@@ -134,6 +134,38 @@ jobs:
           name: eval-${{ inputs.slug }}
           path: .knowledge-bot/eval
           retention-days: 30
+      # Reactions, replies and outcomes of the bot comments, for the suppression list and the weekly tuning.
+      - id: feedback
+        if: success() && hashFiles(steps.previous.outputs.raw-path) != ''
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          CONFIG: ${{ inputs.config }}
+          RAW: ${{ steps.previous.outputs.raw-path }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          node "$BOT_SCRIPTS_DIR/src/cli/collect-feedback.ts" --config "$CONFIG" --raw "$RAW" --repo "$REPO" \
+            --out .knowledge-bot/feedback --github
+      - if: steps.feedback.outcome == 'success'
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: .knowledge-bot/feedback/feedback.json
+          key: ${{ inputs.slug }}-feedback-v1-${{ github.run_id }}-${{ github.run_attempt }}
+      - if: steps.feedback.outcome == 'success'
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: feedback-${{ inputs.slug }}
+          path: .knowledge-bot/feedback
+          retention-days: 30
+      - if: steps.feedback.outcome == 'success'
+        uses: ./.knowledge-bot/auto-triage/actions/report-feedback
+        with:
+          slug: ${{ inputs.slug }}
+          digest-path: .knowledge-bot/feedback/digest.md
+          comments: ${{ steps.feedback.outputs.comments }}
+          tracking: ${{ inputs.tracking }}
+        env:
+          GH_TOKEN: ${{ github.token }}
       # A build that died on the rate limit keeps its raw store progress for the next run.
       - if: failure() && steps.build.outcome == 'failure'
         uses: ./.knowledge-bot/auto-triage/actions/publish-index

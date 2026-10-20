@@ -1,0 +1,43 @@
+---
+name: Report the knowledge bot feedback
+description: Writes the feedback totals to the job summary and keeps one digest issue up to date once a bot comment exists.
+inputs:
+  slug:
+    description: Product slug.
+    required: true
+  digest-path:
+    description: The digest markdown written by collect-feedback; absent when there is no bot comment yet.
+    required: true
+  comments:
+    description: Number of bot comments found.
+    required: true
+  tracking:
+    description: Maintain the digest issue. Needs GH_TOKEN with issues write.
+    default: 'true'
+runs:
+  using: composite
+  steps:
+    - shell: bash
+      env:
+        SLUG: ${{ inputs.slug }}
+        DIGEST: ${{ inputs.digest-path }}
+        COMMENTS: ${{ inputs.comments }}
+        TRACKING: ${{ inputs.tracking }}
+      run: |
+        set -euo pipefail
+        [[ "$COMMENTS" =~ ^[0-9]+$ ]] || { echo "comments must be a number, got '$COMMENTS'" >&2; exit 1; }
+        if [ "$TRACKING" != "true" ] || [ "$COMMENTS" = "0" ] || [ ! -f "$DIGEST" ]; then
+          echo "feedback digest: $COMMENTS bot comments, no digest issue update" >> "$GITHUB_STEP_SUMMARY"
+          exit 0
+        fi
+        title="Knowledge bot $SLUG: feedback digest"
+        existing="$(gh issue list --repo "$GITHUB_REPOSITORY" --label knowledge-bot --state open \
+          --search "\"$title\" in:title" --json number --jq '.[0].number // empty')"
+        gh label create knowledge-bot --repo "$GITHUB_REPOSITORY" --description "Knowledge bot health" --color 5319e7 2>/dev/null || true
+        if [ -n "$existing" ]; then
+          gh issue edit --repo "$GITHUB_REPOSITORY" "$existing" --body-file "$DIGEST" > /dev/null
+          echo "feedback digest: updated issue #$existing" >> "$GITHUB_STEP_SUMMARY"
+        else
+          url="$(gh issue create --repo "$GITHUB_REPOSITORY" --title "$title" --label knowledge-bot --body-file "$DIGEST")"
+          echo "feedback digest: created $url" >> "$GITHUB_STEP_SUMMARY"
+        fi

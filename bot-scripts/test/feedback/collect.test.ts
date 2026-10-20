@@ -94,3 +94,16 @@ test('suppressedOf keeps one entry per issue, latest comment first', () => {
   ]);
   assert.deepEqual(list, [{ issue: 3, reason: 'downvoted', at: '2026-10-02T00:00:00Z' }]);
 });
+
+test('ignores markers posted by humans or with an unknown tier', () => {
+  const spoofed = fakeRaw([
+    issueRecord(20, {}, [
+      { ...bot(601, '1', 'high', 20, '2026-10-10T00:00:00Z', [5]), user: { login: 'mallory', type: 'User' } },
+      bot(602, '2', 'evil|tier', 20, '2026-10-11T00:00:00Z', [5]),
+      bot(603, 'abc', 'high', 20, '2026-10-12T00:00:00Z', [5]),
+      bot(604, '3', 'medium', 20, '2026-10-13T00:00:00Z', [5]),
+    ]),
+  ]);
+  const f = collectFeedback({ raw: spoofed, repository: 'o/r', now });
+  assert.deepEqual(f.comments.map((c) => c.commentId), [604]);
+});

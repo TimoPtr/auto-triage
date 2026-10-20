@@ -28,8 +28,14 @@ export function parseSuggested(body: string): number[] {
   return Array.from(section.matchAll(/^- #(\d+)\b/gm), (m) => Number(m[1]));
 }
 
+const TIERS = new Set(['high', 'medium', 'low']);
+const RUN_ID = /^\d+$/;
+
+/** A bot comment: posted by a Bot account, starting with a marker whose tier and run id are well formed; nothing a user can type qualifies. */
 function isBot(comment: ApiComment): boolean {
-  return (comment.body ?? '').startsWith(MARKER_PREFIX) && parseMarker(comment.body ?? '') !== null;
+  if (comment.user?.type !== 'Bot' || !(comment.body ?? '').startsWith(MARKER_PREFIX)) return false;
+  const marker = parseMarker(comment.body ?? '');
+  return marker !== null && TIERS.has(marker.tier) && RUN_ID.test(marker.runId);
 }
 
 function replyOf(comments: ApiComment[], after: string, issue: ApiIssue): FeedbackReply | null {
