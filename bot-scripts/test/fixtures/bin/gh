@@ -1,0 +1,12 @@
+#!/usr/bin/env bash
+# Fake gh for the restore-artifact.sh tests: answers the three api calls the script makes.
+# FAKE_ARTIFACT_ID: the id the artifact listing yields (empty for none); FAKE_ZIP: the zip served for the download.
+set -euo pipefail
+[ "${1:-}" = "api" ] || { echo "fake gh: unsupported command $*" >&2; exit 1; }
+path="$2"
+case "$path" in
+  */actions/artifacts/*/zip) cat "$FAKE_ZIP" ;;
+  */actions/artifacts\?*) echo "${FAKE_ARTIFACT_ID:-}" ;;
+  repos/*) echo "1 main" ;;
+  *) echo "fake gh: unsupported path $path" >&2; exit 1 ;;
+esac
