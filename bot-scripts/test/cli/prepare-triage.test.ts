@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
 import { createServer } from 'node:http';
-import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -47,4 +47,14 @@ test('exits 2 without a token or an issue number', async () => {
   assert.equal(noToken.status, 2);
   const noIssue = await run(['--config', configPath, '--index', 'x', '--index-status', 'missing', '--repo', 'o/r', '--issue', 'abc', '--out', join(tmp, 'h.json')], { GH_TOKEN: 't' });
   assert.equal(noIssue.status, 2);
+});
+
+test('reads the issue from a file without a token', async () => {
+  const issueFile = join(tmp, 'issue.json'); writeFileSync(issueFile, fixture);
+  const outputs = join(tmp, 'outputs-file.txt');
+  const { stdout, stderr, status } = await run(['--config', configPath, '--index', join(tmp, 'none.sqlite'), '--index-status', 'missing', '--repo', 'o/r', '--issue-file', issueFile, '--out', join(tmp, 'handoff2.json'), '--no-live-forum'],
+    { GH_TOKEN: '', GITHUB_TOKEN: '', GITHUB_API_URL: 'http://127.0.0.1:9', GITHUB_OUTPUT: outputs });
+  assert.equal(status, 0, stderr);
+  assert.equal(JSON.parse(stdout).reason, 'no-usable-index');
+  assert.match(readFileSync(outputs, 'utf8'), /should-continue=false/);
 });

@@ -54,4 +54,5 @@ test('posts nothing for a low tier and fails loudly on a verdict without confide
   const none = run(configPath, agentOutput([]), 'none');
   assert.equal(none.status, 1);
   assert.match(none.stderr, /post_triage_verdict/);
+  assert.match(none.summary, /did not call post_triage_verdict/);
 });

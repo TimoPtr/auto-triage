@@ -15,7 +15,7 @@ export interface TriageIssue {
   state: string;
 }
 
-interface ApiIssue {
+export interface ApiIssue {
   number: number;
   title: string;
   body?: string | null;
@@ -30,7 +30,12 @@ interface ApiIssue {
 export async function fetchIssue(client: Pick<GitHubClient, 'getJson'>, repo: string, number: number): Promise<TriageIssue> {
   if (!REPOSITORY.test(repo)) throw new Error(`repository must be owner/name, got ${repo}`);
   if (!Number.isInteger(number) || number <= 0) throw new Error(`issue number must be a positive integer, got ${number}`);
-  const issue = await client.getJson<ApiIssue>(`repos/${repo}/issues/${number}`);
+  return toTriageIssue(await client.getJson<ApiIssue>(`repos/${repo}/issues/${number}`));
+}
+
+/** The fields the triage keeps from an issue payload (REST `GET /repos/{repo}/issues/{n}`). */
+export function toTriageIssue(issue: ApiIssue): TriageIssue {
+  if (!Number.isInteger(issue.number) || issue.number <= 0) throw new Error('issue payload has no number');
   return {
     number: issue.number,
     title: issue.title ?? '',

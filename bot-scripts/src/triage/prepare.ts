@@ -9,6 +9,9 @@ import { HANDOFF_VERSION, HANDOFF_EXCERPTS, toExcerpt, type Handoff } from './ha
 import type { TriageIssue } from './issue.ts';
 import { triageSettings } from './settings.ts';
 
+/** The live forum search carries the question in a URL; the cleaned text is cut to this. */
+export const LIVE_QUERY_MAX_CHARS = 300;
+
 export type GateReason = 'ok' | 'pull-request' | 'bot-author' | 'empty-issue' | 'no-usable-index' | 'below-min-similarity' | 'no-excerpts';
 
 export interface TriageDecision { shouldContinue: boolean; reason: GateReason; bestSimilarity: number }
@@ -19,7 +22,8 @@ export interface PrepareInput {
   embedder: Embedder | null;
   issue: TriageIssue;
   repository: string;
-  liveLists?: RankedList[];
+  /** Extra ranked lists (a live forum search); a function is called only once the gate has passed, with the cleaned question. */
+  liveLists?: RankedList[] | ((question: string) => Promise<RankedList[]>);
   now?: Date;
 }
 
@@ -60,8 +64,10 @@ export async function prepareTriage({ config, db, embedder, issue, repository, l
   const reason = gate(issue, question, db, embedder);
   if (reason !== 'ok' || !db || !embedder) return stop(reason);
 
-  const results = await retrieve(db, embedder, question, {
-    k: HANDOFF_EXCERPTS, minSimilarity: settings.minSimilarity, excludeItemId: indexedItemId(db, repository, issue.number) ?? undefined, liveLists, now,
+  // retrieve cleans the raw text itself and lifts fenced logs into the lexical query
+  const lists = typeof liveLists === 'function' ? await liveLists(question.slice(0, LIVE_QUERY_MAX_CHARS)) : liveLists;
+  const results = await retrieve(db, embedder, `${issue.title}\n\n${issue.body}`, {
+    k: HANDOFF_EXCERPTS, minSimilarity: settings.minSimilarity, excludeItemId: indexedItemId(db, repository, issue.number) ?? undefined, liveLists: lists, now,
   });
   if (results.bestSimilarity < settings.minSimilarity) return stop('below-min-similarity', results.bestSimilarity);
   if (results.length === 0) return stop('no-excerpts', results.bestSimilarity);

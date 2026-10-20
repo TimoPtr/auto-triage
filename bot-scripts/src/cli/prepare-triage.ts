@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 import { parseArgs } from 'node:util';
-import { mkdirSync, writeFileSync } from 'node:fs';
+import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { loadConfig } from '../config/load.ts';
@@ -10,7 +10,7 @@ import { openDatabase } from '../store/db.ts';
 import { createGitHubClient } from '../providers/github/client.ts';
 import { liveForumList } from '../retrieval/live-forum.ts';
 import type { RankedList } from '../retrieval/rrf.ts';
-import { fetchIssue } from '../triage/issue.ts';
+import { fetchIssue, toTriageIssue, type ApiIssue, type TriageIssue } from '../triage/issue.ts';
 import { prepareTriage } from '../triage/prepare.ts';
 import { validateHandoff } from '../triage/handoff.ts';
 import { writeOutputs } from './index-status.ts';
@@ -29,32 +29,35 @@ export function liveForumTarget(config: Config): { host: string; categorySlug: s
 }
 
 function usage(): never {
-  console.error('usage: prepare-triage --config <knowledge-bot.yaml> --index <knowledge.sqlite> --index-status <fresh|stale|unusable|missing> --repo <owner/repo> --issue <n> --out <handoff.json> [--model-cache .model-cache] [--no-live-forum]\n  needs GH_TOKEN or GITHUB_TOKEN');
+  console.error('usage: prepare-triage --config <knowledge-bot.yaml> --index <knowledge.sqlite> --index-status <fresh|stale|unusable|missing> --repo <owner/repo> (--issue <n> | --issue-file <issue.json>) --out <handoff.json> [--model-cache .model-cache] [--no-live-forum]\n  --issue needs GH_TOKEN or GITHUB_TOKEN; --issue-file takes the REST payload and needs no token');
   process.exit(2);
 }
 
 if (import.meta.url === pathToFileURL(process.argv[1] ?? '').href) {
   const { values } = parseArgs({
     options: {
-      config: { type: 'string' }, index: { type: 'string' }, 'index-status': { type: 'string' }, repo: { type: 'string' }, issue: { type: 'string' }, out: { type: 'string' },
+      config: { type: 'string' }, index: { type: 'string' }, 'index-status': { type: 'string' }, repo: { type: 'string' }, issue: { type: 'string' }, 'issue-file': { type: 'string' }, out: { type: 'string' },
       'model-cache': { type: 'string', default: process.env.KB_MODEL_CACHE || '.model-cache' }, 'no-live-forum': { type: 'boolean', default: false },
     },
   });
   const token = process.env.GH_TOKEN || process.env.GITHUB_TOKEN;
   const issueNumber = Number(values.issue);
-  if (!values.config || !values.index || !values['index-status'] || !values.repo || !values.out || !token || !Number.isInteger(issueNumber) || issueNumber <= 0) usage();
+  const byNumber = values.issue !== undefined && !values['issue-file'];
+  if (!values.config || !values.index || !values['index-status'] || !values.repo || !values.out) usage();
+  if (byNumber && (!token || !Number.isInteger(issueNumber) || issueNumber <= 0)) usage();
+  if (!byNumber && !values['issue-file']) usage();
   const log = (line: string) => console.error(line);
   let db: DatabaseSync | null = null;
   try {
     const config = loadConfig(values.config);
-    const client = createGitHubClient({ token, baseUrl: process.env.GITHUB_API_URL || undefined, log });
-    const issue = await fetchIssue(client, values.repo, issueNumber);
+    const issue: TriageIssue = byNumber
+      ? await fetchIssue(createGitHubClient({ token: token as string, baseUrl: process.env.GITHUB_API_URL || undefined, log }), values.repo, issueNumber)
+      : toTriageIssue(JSON.parse(readFileSync(values['issue-file'] as string, 'utf8')) as ApiIssue);
     const usable = USABLE_STATUSES.has(values['index-status']);
     db = usable ? openDatabase(values.index, { readOnly: true }) : null;
     const embedder = usable ? createEmbedder(config.embedding, { cacheDir: values['model-cache'] }) : null;
-    const liveLists: RankedList[] = [];
     const target = values['no-live-forum'] ? null : liveForumTarget(config);
-    if (db && target) liveLists.push(await liveForumList(db, { ...target, question: `${issue.title}\n${issue.body}`, log }));
+    const liveLists = async (question: string): Promise<RankedList[]> => (db && target ? [await liveForumList(db, { ...target, question, log })] : []);
     const { decision, handoff } = await prepareTriage({ config, db, embedder, issue, repository: values.repo, liveLists });
     if (handoff) {
       mkdirSync(dirname(values.out), { recursive: true });

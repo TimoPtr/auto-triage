@@ -7,7 +7,7 @@ import { fileURLToPath } from 'node:url';
 import { writeIndex } from '../../src/store/writer.ts';
 import { openDatabase } from '../../src/store/db.ts';
 import { loadConfig } from '../../src/config/load.ts';
-import { prepareTriage, fixedBy, indexedItemId } from '../../src/triage/prepare.ts';
+import { prepareTriage, fixedBy, indexedItemId, LIVE_QUERY_MAX_CHARS } from '../../src/triage/prepare.ts';
 import type { TriageIssue } from '../../src/triage/issue.ts';
 import type { IndexItem, SourceKind } from '../../src/providers/types.ts';
 import type { Audience } from '../../src/config/types.ts';
@@ -41,6 +41,9 @@ test.before(async () => {
     yield item('51', 'pull', 'Widget rework', 'Widget rework', { outcome: { state: 'closed', linkedIssues: [1] } });
     yield item('widgets', 'docs', 'Android Widgets', 'Widgets refresh on tap');
     yield item('EntityWidget.kt', 'code', 'EntityWidget.kt', 'class EntityWidget widget provider', { audience: 'maintainer' });
+    const logged = item('7', 'issue', 'Refresh failure', 'Refresh failure on tablets');
+    logged.chunks[0].logs = 'E/EntityWidget: refresh failed';
+    yield logged;
   }
   await writeIndex({ items: items(), embedder, outPath: indexPath, meta: {} });
   db = openDatabase(indexPath, { readOnly: true });
@@ -97,4 +100,27 @@ test('fixedBy lists only merged pulls of the origin that link the issue', () => 
   assert.deepEqual(fixedBy(db, 'o/r', 7), ['#50']);
   assert.deepEqual(fixedBy(db, 'o/r', 2), []);
   assert.deepEqual(fixedBy(db, 'other/repo', 1), []);
+});
+
+test('lifts fenced logs of the issue into the lexical search', async () => {
+  const body = 'Widget crash\n\n```\nE/EntityWidget: refresh failed\n\tat io.ha.widget.EntityWidget.refresh(EntityWidget.kt:10)\n```';
+  const { decision, handoff } = await prepareTriage({ ...base(), issue: issueOf({ title: 'Widget crash', body }) });
+  assert.equal(decision.reason, 'ok');
+  const logged = handoff.excerpts.find((e) => e.url.endsWith('/issue/7'));
+  assert.ok(logged, 'the item matched only through its logs is retrieved');
+  assert.ok(logged.scores.lexical !== null);
+  assert.equal(handoff.issue.body, 'Widget crash');
+  assert.match(handoff.issue.logs, /E\/EntityWidget/);
+});
+
+test('asks for live lists only after the gate, with the cleaned question', async () => {
+  const calls: string[] = [];
+  const liveLists = async (question: string) => { calls.push(question); return []; };
+  await prepareTriage({ ...base(), issue: issueOf({ authorType: 'Bot' }), liveLists });
+  assert.deepEqual(calls, []);
+  await prepareTriage({ ...base(), issue: issueOf({ title: 'Widget stops updating', body: `<!-- template -->\nWidget stops updating\n\n${'x'.repeat(2000)}` }), liveLists });
+  assert.equal(calls.length, 1);
+  assert.ok(!calls[0].includes('<!--'));
+  assert.ok(calls[0].length <= LIVE_QUERY_MAX_CHARS);
+  assert.ok(calls[0].startsWith('Widget stops updating'));
 });

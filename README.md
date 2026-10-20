@@ -366,16 +366,18 @@ outside reporters are triaged too; the issue text is therefore treated as data e
 
 What happens, in three jobs:
 
-1. **Pre-activation (no model).** Checks out the consumer and this repository, restores the index,
-   fetches the issue with the workflow token and runs `prepare-triage`: the body is cleaned like an
-   indexed issue, embedded, and searched (dense + lexical + a live forum search), excluding the issue
-   itself when the index already holds it. The gate stops the run for pull requests, bot authors,
+1. **Pre-activation (no model).** Fetches the issue with `gh api` before anything is installed,
+   checks out the consumer and this repository, restores the index and runs `prepare-triage` from
+   the saved payload, so the step that loads the model and the rest of the dependencies holds no
+   token. The body is cleaned like an indexed issue, embedded, and searched (dense + lexical, with
+   fenced logs lifted into the lexical query + a live forum search on the cleaned text), excluding
+   the issue itself when the index already holds it. The gate stops the run for pull requests, bot authors,
    empty issues, a missing or unusable index, and a best similarity under `triage.minSimilarity`.
    Otherwise it writes the handoff (`schemas/handoff.json`: the cleaned issue, up to ten excerpts
    with ids, source, url, date, audience, outcome and scores, and the confidence thresholds) and
    uploads it as the `triage-handoff` artifact. A stopped run spends no agent time and posts nothing.
 2. **Agent.** `claude-sonnet-5` on the Copilot engine, five turns, no network, no GitHub tools,
-   `bash` limited to `cat`, `jq`, `head`, `wc`. It reads `/tmp/gh-aw/agent/handoff.json` and calls
+   `bash` limited to `cat`, `jq`, `head`, `wc` plus gh-aw's read-only defaults. It reads `/tmp/gh-aw/agent/handoff.json` and calls
    `post_triage_verdict` once with `confidence` (0 to 100), `duplicates` and `related` (excerpt ids),
    an optional `answer` and `component`. It never sees the index and cannot write anywhere.
 3. **post-triage-verdict (no model).** `render-verdict` validates the verdict against the handoff
@@ -390,8 +392,14 @@ What happens, in three jobs:
    outdated and posts the new one with `gh api` under its own `issues: write`; the `duplicate`
    label is never applied.
 
-Every run writes the gate outcome, the tier, the verdict and the comment to the job summary, so a
-run that posts nothing is still readable.
+The pre-activation job writes the gate outcome to the job summary and the post-triage-verdict job
+the tier, the verdict and the comment (or why none was posted), so a run that posts nothing is still
+readable. One case is only in gh-aw's own agent summary: an agent that ends without calling the
+tool, since gh-aw skips the custom job then.
+
+The pre-activation job holds `issues: write` to remove the `ai-recheck` label; that is the one write
+scope outside the posting job, and no dependency code runs with its token (the index restore uses it
+for the read-only artifact fallback).
 
 Staged rollout: with `triage.staged: true` in the config the comment goes to the run summary only.
 Read the summaries for a while, then flip it.

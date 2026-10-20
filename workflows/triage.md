@@ -34,6 +34,7 @@ on:
         GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       run: |
         set -euo pipefail
+        [[ "$ISSUE" =~ ^[0-9]+$ ]] || { echo "issue number must be digits, got '$ISSUE'" >&2; exit 1; }
         if [ "$ACTION" = "labeled" ] && [ "$LABEL" != "ai-recheck" ]; then
           echo "label $LABEL is not ai-recheck, nothing to do"
           echo "run=false" >> "$GITHUB_OUTPUT"
@@ -43,6 +44,16 @@ on:
           gh api -X DELETE "repos/$REPO/issues/$ISSUE/labels/$LABEL" > /dev/null || true
         fi
         echo "run=true" >> "$GITHUB_OUTPUT"
+    # The issue is fetched here, before any dependency is installed, so the step that loads the model runs without a token.
+    - if: steps.trigger.outputs.run == 'true'
+      env:
+        GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        REPO: ${{ github.repository }}
+        ISSUE: ${{ github.event.issue.number || inputs.issue-number }}
+      run: |
+        set -euo pipefail
+        mkdir -p /tmp/triage
+        gh api "repos/$REPO/issues/$ISSUE" > /tmp/triage/issue.json
     - if: steps.trigger.outputs.run == 'true'
       uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       with:
@@ -69,19 +80,18 @@ on:
         slug: ${{ steps.config.outputs.slug }}
       env:
         GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    # No token here: this step runs the embedding model and the rest of the dependencies.
     - id: prepare
       if: steps.trigger.outputs.run == 'true'
       env:
-        GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         CONFIG: .github/knowledge-bot.yaml
         REPO: ${{ github.repository }}
-        ISSUE: ${{ github.event.issue.number || inputs.issue-number }}
         INDEX: ${{ steps.index.outputs.index-path }}
         INDEX_STATUS: ${{ steps.index.outputs.status }}
       run: |
         set -euo pipefail
         node "$BOT_SCRIPTS_DIR/src/cli/prepare-triage.ts" --config "$CONFIG" --index "$INDEX" --index-status "$INDEX_STATUS" \
-          --repo "$REPO" --issue "$ISSUE" --out /tmp/triage/handoff.json
+          --repo "$REPO" --issue-file /tmp/triage/issue.json --out /tmp/triage/handoff.json
     - if: steps.prepare.outputs.should-continue == 'true'
       uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
       with:

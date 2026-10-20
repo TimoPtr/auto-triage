@@ -42,7 +42,9 @@ if (import.meta.url === pathToFileURL(process.argv[1] ?? '').href) {
     console.log(JSON.stringify({ tier, post, confidence: verdict.confidence }));
   } catch (error) {
     const prefix = error instanceof VerdictError || error instanceof HandoffError ? `${error.name}: ` : '';
-    console.error(`${prefix}${error instanceof Error ? error.message : String(error)}`);
+    const message = `${prefix}${error instanceof Error ? error.message : String(error)}`;
+    console.error(message);
+    appendSummary(['### Triage verdict', '', `no comment posted: ${message}`]);
     process.exit(1);
   }
 }
