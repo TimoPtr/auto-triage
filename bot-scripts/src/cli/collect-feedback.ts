@@ -9,6 +9,7 @@ import { createGitHubClient } from '../providers/github/client.ts';
 import { collectFeedback } from '../feedback/collect.ts';
 import { refreshReactions, FEEDBACK_WINDOW_DAYS } from '../feedback/refresh.ts';
 import { digestMarkdown } from '../feedback/digest.ts';
+import { refreshLinks } from '../feedback/links.ts';
 import { writeOutputs } from './index-status.ts';
 import { appendSummary } from './summary.ts';
 
@@ -33,9 +34,17 @@ if (import.meta.url === pathToFileURL(process.argv[1] ?? '').href) {
     } else {
       const raw = openRawStore(values.raw, { log });
       let feedback;
-      try { feedback = collectFeedback({ raw, repository: values.repo }); } finally { raw.close(); }
       let refreshed = 0;
-      if (values.github) ({ refreshed } = await refreshReactions(createGitHubClient({ token: token as string, log }), feedback, { windowDays, log }));
+      try {
+        feedback = collectFeedback({ raw, repository: values.repo });
+        if (values.github) {
+          const client = createGitHubClient({ token: token as string, log });
+          // the duplicate marks of closed-as-duplicate issues first, so the links record is the authority
+          const links = await refreshLinks(client, raw, feedback, log);
+          if (links.fetched > 0) feedback = collectFeedback({ raw, repository: values.repo });
+          ({ refreshed } = await refreshReactions(client, feedback, { windowDays, log }));
+        }
+      } finally { raw.close(); }
       mkdirSync(values.out, { recursive: true });
       writeFileSync(join(values.out, 'feedback.json'), JSON.stringify(feedback, null, 2));
       const digest = feedback.comments.length > 0;

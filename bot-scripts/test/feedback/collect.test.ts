@@ -39,6 +39,14 @@ const raw = fakeRaw([
     human(542, 'maintainer1', 'MEMBER', '2026-10-13T00:00:00Z', 'Duplicate of #99'),
   ]),
   issueRecord(15, {}, [human(551, 'erin', 'NONE', '2026-10-10T00:00:00Z', 'plain issue comment')]),
+  issueRecord(16, { state: 'closed', state_reason: 'duplicate', closed_at: '2026-10-13T00:00:00Z', closed_by: { login: 'maintainer1' } }, [
+    bot(561, '5', 'high', 16, '2026-10-10T00:00:00Z', [5]),
+  ]),
+  issueRecord(17, { state: 'closed', state_reason: 'duplicate', closed_at: '2026-10-13T00:00:00Z', closed_by: { login: 'maintainer1' }, updated_at: '2026-10-13T00:00:00Z' }, [
+    bot(571, '6', 'high', 17, '2026-10-10T00:00:00Z', [5]),
+    human(572, 'maintainer1', 'MEMBER', '2026-10-13T00:00:00Z', 'Duplicate of #5'),
+  ]),
+  { provider: 'github', origin: 'o/r', kind: 'links', id: '17', updatedAt: '2026-10-01T00:00:00Z', payload: { version: 2, kind: 'issue', duplicateOf: [], duplicatedBy: [], closes: [], markedAt: null } },
 ]);
 const now = new Date('2026-10-20T00:00:00Z');
 
@@ -81,7 +89,7 @@ test('marks a recheck and a miss from a maintainer duplicate comment', () => {
 test('recognises bot comments only by a leading marker', () => {
   const f = collectFeedback({ raw, repository: 'o/r', now });
   assert.ok(f.comments.every((c) => c.issue !== 13 && c.issue !== 15));
-  assert.equal(f.comments.length, 5);
+  assert.equal(f.comments.length, 7);
   assert.deepEqual(f.comments.map((c) => c.commentAt), [...f.comments.map((c) => c.commentAt)].sort().reverse(), 'newest first');
 });
 
@@ -106,4 +114,27 @@ test('ignores markers posted by humans or with an unknown tier', () => {
   ]);
   const f = collectFeedback({ raw: spoofed, repository: 'o/r', now });
   assert.deepEqual(f.comments.map((c) => c.commentId), [604]);
+});
+
+test('an unknown duplicate target is neither a hit nor a miss', () => {
+  const f = collectFeedback({ raw, repository: 'o/r', now });
+  const c = f.comments.find((x) => x.issue === 16);
+  assert.deepEqual({ ...c.outcome }, { recheck: false, closedAt: '2026-10-13T00:00:00Z', stateReason: 'duplicate', duplicateOf: [], hit: false, miss: false, answered: false, dismissed: false });
+  assert.ok(f.suppressed.every((s) => s.issue !== 16));
+});
+
+test('falls through to maintainer comments when the links record is empty or stale', () => {
+  const f = collectFeedback({ raw, repository: 'o/r', now });
+  const c = f.comments.find((x) => x.issue === 17);
+  assert.deepEqual(c.outcome.duplicateOf, [5]);
+  assert.equal(c.outcome.hit, true);
+});
+
+test('a clean latest comment lifts the suppression of an issue', () => {
+  const base = { runId: '1', tier: 'high', commentId: null, suggested: [], up: 0, reply: null, outcome: { recheck: false, closedAt: null, stateReason: null, duplicateOf: [], hit: false, miss: false, answered: false, dismissed: false } };
+  const list = suppressedOf([
+    { ...base, issue: 3, commentAt: '2026-10-02T00:00:00Z', down: 0 },
+    { ...base, issue: 3, commentAt: '2026-10-01T00:00:00Z', down: 1 },
+  ]);
+  assert.deepEqual(list, []);
 });

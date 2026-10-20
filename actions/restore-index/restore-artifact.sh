@@ -40,9 +40,10 @@ discard() {
 }
 
 # Every entry must be a plain file name before anything is extracted.
+listing="$(unzip -Z1 "$tmp/artifact.zip" 2>/dev/null)" || discard "is not a zip archive"
 while IFS= read -r entry; do
   [[ "$entry" =~ ^[A-Za-z0-9][A-Za-z0-9._-]*$ ]] || discard "holds an entry that is not a plain file name ($entry)"
-done < <(unzip -Z1 "$tmp/artifact.zip")
+done <<< "$listing"
 
 mkdir "$tmp/extract"
 unzip -o -q "$tmp/artifact.zip" -d "$tmp/extract"

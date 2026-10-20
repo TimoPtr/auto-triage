@@ -46,10 +46,16 @@ function replyOf(comments: ApiComment[], after: string, issue: ApiIssue): Feedba
   return { role, at: reply.created_at, text: (reply.body ?? '').slice(0, REPLY_MAX_CHARS) };
 }
 
-/** Duplicate targets: the benchmark's links record when present, else maintainer comments after the bot comment. */
+/**
+ * Duplicate targets: the links record when it is current and names one, else
+ * maintainer comments after the bot comment. A record fetched before the close
+ * (older than the issue's `updated_at`) or naming nothing is not an answer.
+ */
 function duplicateTargets(raw: RawStore, repository: string, issue: ApiIssue, comments: ApiComment[], after: string): number[] {
+  const stored = raw.get<{ version?: number }>('github', repository, 'links', String(issue.number));
   const links = linksOf(raw, repository, issue.number);
-  if (links) return links.duplicateOf;
+  const current = stored !== null && (stored.updatedAt ?? '') >= issue.updated_at;
+  if (links && current && links.duplicateOf.length > 0) return links.duplicateOf;
   const numbers = new Set<number>();
   for (const c of comments) {
     if (c.created_at <= after || !MAINTAINER_ASSOCIATIONS.has(c.author_association ?? '')) continue;
@@ -66,22 +72,29 @@ function outcomeOf(raw: RawStore, repository: string, stored: StoredIssue, comme
   const isDuplicate = issue.state === 'closed' && (stateReason === 'duplicate' || (issue.labels ?? []).some((l) => l.name === 'duplicate'));
   const duplicateOf = isDuplicate ? duplicateTargets(raw, repository, issue, comments, comment.created_at) : [];
   const hit = duplicateOf.some((n) => suggested.includes(n));
-  const miss = isDuplicate && !hit;
+  // a duplicate whose target is unknown is neither a hit nor a miss
+  const miss = isDuplicate && duplicateOf.length > 0 && !hit;
   const answered = !isDuplicate && closedAt !== null && issue.closed_by?.login !== undefined && issue.closed_by.login === issue.user?.login
     && Date.parse(closedAt) - Date.parse(comment.created_at) <= ANSWERED_WINDOW_DAYS * DAY_MS && Date.parse(closedAt) >= Date.parse(comment.created_at);
-  const dismissed = down > 0 || (miss && suggested.length > 0);
-  return { recheck, closedAt, stateReason, duplicateOf, hit, miss, answered, dismissed };
+  return { recheck, closedAt, stateReason, duplicateOf, hit, miss, answered, dismissed: dismissedOf(down, miss, suggested) };
 }
 
-/** One entry per issue that got a thumbs down or a dismissed suggestion, from its latest comment. */
+/** A thumbs down, or a miss while duplicates were suggested. */
+export function dismissedOf(down: number, miss: boolean, suggested: number[]): boolean {
+  return down > 0 || (miss && suggested.length > 0);
+}
+
+/** One entry per issue whose latest bot comment got a thumbs down or a dismissed suggestion; a clean re-check lifts it. */
 export function suppressedOf(comments: FeedbackComment[]): Suppressed[] {
-  const byIssue = new Map<number, Suppressed>();
+  const seen = new Set<number>();
+  const list: Suppressed[] = [];
   for (const c of [...comments].sort((a, b) => b.commentAt.localeCompare(a.commentAt))) {
-    if (byIssue.has(c.issue)) continue;
-    if (c.down > 0) byIssue.set(c.issue, { issue: c.issue, reason: 'downvoted', at: c.commentAt });
-    else if (c.outcome.dismissed) byIssue.set(c.issue, { issue: c.issue, reason: 'dismissed', at: c.commentAt });
+    if (seen.has(c.issue)) continue;
+    seen.add(c.issue);
+    if (c.down > 0) list.push({ issue: c.issue, reason: 'downvoted', at: c.commentAt });
+    else if (c.outcome.dismissed) list.push({ issue: c.issue, reason: 'dismissed', at: c.commentAt });
   }
-  return Array.from(byIssue.values()).sort((a, b) => a.issue - b.issue);
+  return list.sort((a, b) => a.issue - b.issue);
 }
 
 /** Every bot comment of the repository in the raw store, with its reactions, reply and outcome. */

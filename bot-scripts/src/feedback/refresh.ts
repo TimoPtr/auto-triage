@@ -1,31 +1,34 @@
 import type { GitHubClient } from '../providers/github/client.ts';
-import { suppressedOf, type Feedback } from './collect.ts';
+import { dismissedOf, suppressedOf, type Feedback } from './collect.ts';
 
-/** Reactions are re-read through the API for comments younger than this, since a reaction does not bump the issue's `updated_at`. */
+/** Reactions are re-read for comments younger than this, since a reaction does not bump the issue's `updated_at`. */
 export const FEEDBACK_WINDOW_DAYS = 90;
 const DAY_MS = 24 * 60 * 60 * 1000;
-const NOT_FOUND = /\b404\b/;
+const PER_PAGE = 100;
 
-interface ApiCommentReactions { reactions?: Record<string, number> }
+interface ApiCommentListing { id: number; reactions?: Record<string, number> }
 
 export interface RefreshOptions { now?: Date; windowDays?: number; log?: (line: string) => void }
 
-/** Replaces the reaction counts of recent comments in place and recomputes what depends on them. */
-export async function refreshReactions(client: Pick<GitHubClient, 'getJson'>, feedback: Feedback, { now = new Date(), windowDays = FEEDBACK_WINDOW_DAYS, log = () => {} }: RefreshOptions = {}): Promise<{ refreshed: number }> {
+/**
+ * Replaces the reaction counts of recent comments in place from one listing of
+ * the repository's comments since the window start (about one request per 100
+ * comments, whatever the number of bot comments), then recomputes what depends on them.
+ */
+export async function refreshReactions(client: Pick<GitHubClient, 'paginate'>, feedback: Feedback, { now = new Date(), windowDays = FEEDBACK_WINDOW_DAYS, log = () => {} }: RefreshOptions = {}): Promise<{ refreshed: number }> {
+  const since = new Date(now.getTime() - windowDays * DAY_MS).toISOString();
+  const recent = new Map(feedback.comments.filter((c) => c.commentId !== null && c.commentAt >= since).map((c) => [c.commentId as number, c]));
   let refreshed = 0;
-  for (const comment of feedback.comments) {
-    if (comment.commentId === null || now.getTime() - Date.parse(comment.commentAt) > windowDays * DAY_MS) continue;
-    let payload: ApiCommentReactions;
-    try {
-      payload = await client.getJson<ApiCommentReactions>(`repos/${feedback.repository}/issues/comments/${comment.commentId}`);
-    } catch (error) {
-      if (error instanceof Error && NOT_FOUND.test(error.message)) { log(`comment ${comment.commentId} of #${comment.issue} is gone, keeping its stored reactions`); continue; }
-      throw error;
+  if (recent.size > 0) {
+    for await (const listed of client.paginate<ApiCommentListing>(`repos/${feedback.repository}/issues/comments`, { since, per_page: PER_PAGE })) {
+      const comment = recent.get(listed.id);
+      if (!comment) continue;
+      comment.up = listed.reactions?.['+1'] ?? 0;
+      comment.down = listed.reactions?.['-1'] ?? 0;
+      comment.outcome.dismissed = dismissedOf(comment.down, comment.outcome.miss, comment.suggested);
+      refreshed += 1;
     }
-    comment.up = payload.reactions?.['+1'] ?? 0;
-    comment.down = payload.reactions?.['-1'] ?? 0;
-    comment.outcome.dismissed = comment.down > 0 || (comment.outcome.miss && comment.suggested.length > 0);
-    refreshed += 1;
+    if (refreshed < recent.size) log(`${recent.size - refreshed} recent bot comment(s) not in the listing, keeping their stored reactions`);
   }
   feedback.suppressed = suppressedOf(feedback.comments);
   return { refreshed };

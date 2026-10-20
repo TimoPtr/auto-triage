@@ -84,7 +84,7 @@ on:
     - if: steps.trigger.outputs.run == 'true'
       uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
       with:
-        path: .knowledge-bot/feedback.json
+        path: .knowledge-bot/feedback/feedback.json
         key: ${{ steps.config.outputs.slug }}-feedback-v1-${{ github.run_id }}
         restore-keys: |
           ${{ steps.config.outputs.slug }}-feedback-v1-
@@ -99,7 +99,7 @@ on:
       run: |
         set -euo pipefail
         node "$BOT_SCRIPTS_DIR/src/cli/prepare-triage.ts" --config "$CONFIG" --index "$INDEX" --index-status "$INDEX_STATUS" \
-          --repo "$REPO" --issue-file /tmp/triage/issue.json --out /tmp/triage/handoff.json --feedback .knowledge-bot/feedback.json
+          --repo "$REPO" --issue-file /tmp/triage/issue.json --out /tmp/triage/handoff.json --feedback .knowledge-bot/feedback/feedback.json
     - if: steps.prepare.outputs.should-continue == 'true'
       uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
       with:

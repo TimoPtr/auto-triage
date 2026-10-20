@@ -67,3 +67,12 @@ test('keeps the single-file mode', () => {
   const none = run(['x-index', join(tmp, 'none-dest', 'knowledge.sqlite')], zip, '');
   assert.equal(none.stdout.trim(), '0');
 });
+
+test('discards a corrupt zip instead of failing', () => {
+  const corrupt = join(tmp, 'corrupt.zip'); writeFileSync(corrupt, 'this is not a zip');
+  const dest = join(tmp, 'corrupt-dest');
+  const r = run(['eval-x', dest, 'dir'], corrupt);
+  assert.equal(r.status, 0, r.stderr);
+  assert.equal(r.stdout.trim(), '0');
+  assert.match(r.stderr, /ignoring it/);
+});
