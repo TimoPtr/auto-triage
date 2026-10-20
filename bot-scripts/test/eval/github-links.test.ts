@@ -3,15 +3,15 @@ import assert from 'node:assert/strict';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { fetchLinks, linksOf, LINKS_BATCH } from '../../src/eval/github-links.ts';
+import { fetchLinks, linksOf, LINKS_BATCH, LINKS_VERSION } from '../../src/eval/github-links.ts';
 import { openRawStore } from '../../src/store/raw.ts';
 import type { PaginatingClient } from '../../src/providers/types.ts';
 
 const tmp = mkdtempSync(join(tmpdir(), 'kb-links-'));
 test.after(() => rmSync(tmp, { recursive: true, force: true }));
 
-const mark = (createdAt: string, number: number) => ({ __typename: 'MarkedAsDuplicateEvent', createdAt, canonical: { __typename: 'Issue', number } });
-const unmark = (createdAt: string, number: number) => ({ __typename: 'UnmarkedAsDuplicateEvent', createdAt, canonical: { __typename: 'Issue', number } });
+const mark = (createdAt: string, canonical: number, duplicate: number) => ({ __typename: 'MarkedAsDuplicateEvent', createdAt, canonical: { __typename: 'Issue', number: canonical }, duplicate: { __typename: 'Issue', number: duplicate } });
+const unmark = (createdAt: string, canonical: number, duplicate: number) => ({ __typename: 'UnmarkedAsDuplicateEvent', createdAt, canonical: { __typename: 'Issue', number: canonical }, duplicate: { __typename: 'Issue', number: duplicate } });
 
 /** Answers every alias in the query from `answers`, keyed by alias; an alias in `failing` becomes a GraphQL error. */
 function fakeClient(answers: Record<string, unknown>, failing: string[] = [], log: { query: string; variables: Record<string, unknown> }[] = []): PaginatingClient {
@@ -31,9 +31,10 @@ function fakeClient(answers: Record<string, unknown>, failing: string[] = [], lo
   } as unknown as PaginatingClient;
 }
 
+// GitHub puts the mark event on the canonical issue's timeline: on 10, "20 was marked a duplicate of this"
 const answers = {
-  i10: { number: 10, timelineItems: { nodes: [mark('2025-01-01T00:00:00Z', 3), unmark('2025-01-02T00:00:00Z', 3)] } },
-  i20: { number: 20, timelineItems: { nodes: [mark('2025-02-01T00:00:00Z', 10)] } },
+  i10: { number: 10, timelineItems: { nodes: [mark('2025-01-01T00:00:00Z', 3, 10), unmark('2025-01-02T00:00:00Z', 3, 10), mark('2025-02-01T00:00:00Z', 10, 20), mark('2025-02-03T00:00:00Z', 10, 21), unmark('2025-02-04T00:00:00Z', 10, 21)] } },
+  i20: { number: 20, timelineItems: { nodes: [mark('2025-02-01T00:00:00Z', 10, 20)] } },
   p40: { number: 40, closingIssuesReferences: { nodes: [{ number: 10 }, { number: 11 }] } },
 };
 const refs = [
@@ -50,9 +51,10 @@ test('fetches issue duplicates and pull closes in one batch', async () => {
   assert.equal(log.length, 1);
   assert.deepEqual(log[0].variables, { owner: 'o', name: 'r' });
   assert.match(log[0].query, /MARKED_AS_DUPLICATE_EVENT, UNMARKED_AS_DUPLICATE_EVENT/);
-  assert.deepEqual(linksOf(raw, 'o/r', 10), { kind: 'issue', duplicateOf: [], closes: [], markedAt: null });
-  assert.deepEqual(linksOf(raw, 'o/r', 20), { kind: 'issue', duplicateOf: [10], closes: [], markedAt: '2025-02-01T00:00:00Z' });
-  assert.deepEqual(linksOf(raw, 'o/r', 40), { kind: 'pull', duplicateOf: [], closes: [10, 11], markedAt: null });
+  assert.match(log[0].query, /duplicate \{ __typename/);
+  assert.deepEqual(linksOf(raw, 'o/r', 10), { version: LINKS_VERSION, kind: 'issue', duplicateOf: [], duplicatedBy: [20], closes: [], markedAt: '2025-02-03T00:00:00Z' });
+  assert.deepEqual(linksOf(raw, 'o/r', 20), { version: LINKS_VERSION, kind: 'issue', duplicateOf: [10], duplicatedBy: [], closes: [], markedAt: '2025-02-01T00:00:00Z' });
+  assert.deepEqual(linksOf(raw, 'o/r', 40), { version: LINKS_VERSION, kind: 'pull', duplicateOf: [], duplicatedBy: [], closes: [10, 11], markedAt: null });
   assert.equal(linksOf(raw, 'o/r', 99), null);
   raw.close();
 });
@@ -64,6 +66,9 @@ test('reuses stored links when updatedAt matches', async () => {
   assert.deepEqual(again, { fetched: 0, reused: 3, requests: 0 });
   const changed = await fetchLinks(fakeClient(answers), 'o/r', [{ ...refs[1], updatedAt: '2025-04-01T00:00:00Z' }], raw);
   assert.deepEqual(changed, { fetched: 1, reused: 0, requests: 1 });
+  raw.put({ provider: 'github', origin: 'o/r', kind: 'links', id: '10', updatedAt: refs[0].updatedAt, payload: { version: LINKS_VERSION - 1, kind: 'issue', duplicateOf: [10], closes: [], markedAt: null } });
+  const outdated = await fetchLinks(fakeClient(answers), 'o/r', [refs[0]], raw);
+  assert.deepEqual(outdated, { fetched: 1, reused: 0, requests: 1 }, 'links of an older version are fetched again');
   raw.close();
 });
 

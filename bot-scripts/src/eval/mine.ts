@@ -11,6 +11,8 @@ export const DEFAULT_SAMPLE = 30;
 const MAINTAINER_ASSOCIATIONS = new Set(['OWNER', 'MEMBER', 'COLLABORATOR']);
 const DUPLICATE_OF = /\bdup(?:licate|e)s?\s*(?:of|:)?\s*(?:https:\/\/github\.com\/([^\s/]+\/[^\s/]+)\/(?:issues|pull)\/|#)(\d+)/gi;
 const URL = /https?:\/\/[^\s)>\]'"]+/g;
+/** Lines a comment quotes from someone else; what they say is not the maintainer's. */
+const QUOTED_LINE = /^[ \t]*>.*$/gm;
 const TIER: Record<Relation, Tier> = { duplicate: 'high', 'fixed-by': 'medium', docs: 'high', forum: 'medium', negative: 'low', curated: 'high' };
 const PREFIX: Record<Relation, string> = { duplicate: 'dup', 'fixed-by': 'fix', docs: 'docs', forum: 'forum', negative: 'neg', curated: 'cur' };
 
@@ -50,13 +52,15 @@ class Miner {
     if (asOf > draft.asOf) draft.asOf = asOf;
   }
 
-  /** Maintainer comments of a closed issue; an issue stored without its comments is counted and skipped. */
+  /** Maintainer comments of a closed issue with their quoted lines removed; an issue stored without its comments is counted and skipped. */
   maintainerComments(stored: StoredIssue): ApiComment[] {
     if (!stored.complete) {
       if (!this.incomplete.has(stored.issue.number)) { this.incomplete.add(stored.issue.number); this.drop('incomplete-issue'); }
       return [];
     }
-    return stored.comments.filter((c) => c.author_association !== undefined && MAINTAINER_ASSOCIATIONS.has(c.author_association));
+    return stored.comments
+      .filter((c) => c.author_association !== undefined && MAINTAINER_ASSOCIATIONS.has(c.author_association))
+      .map((c) => ({ ...c, body: (c.body ?? '').replace(QUOTED_LINE, '') }));
   }
 
   /** The type of a referenced number, or null when it is unknown or in another repository. */
@@ -79,14 +83,23 @@ class Miner {
     this.add('duplicate', query, asOf, expected, labelSource);
   }
 
+  /** Timeline marks first, read from both sides of the pair; a comment rule applies only to an issue with no mark. */
   duplicates() {
+    const marked = new Set<number>();
     for (const stored of this.repo.issues.values()) {
-      if (stored.issue.state !== 'closed') continue;
       const links = linksOf(this.raw, this.repo.name, stored.issue.number);
-      if (links?.duplicateOf.length) {
-        for (const number of links.duplicateOf) this.duplicate(stored, number, undefined, links.markedAt ?? stored.issue.closed_at ?? stored.issue.updated_at, 'timeline:marked-duplicate');
-        continue;
+      if (!links) continue;
+      const asOf = links.markedAt ?? stored.issue.closed_at ?? stored.issue.updated_at;
+      for (const number of links.duplicateOf) { marked.add(stored.issue.number); this.duplicate(stored, number, undefined, asOf, 'timeline:marked-duplicate'); }
+      for (const number of links.duplicatedBy) {
+        const other = this.repo.issues.get(number);
+        if (!other) { this.drop('unknown-target'); continue; }
+        marked.add(number);
+        this.duplicate(other, stored.issue.number, undefined, asOf, 'timeline:marked-duplicate');
       }
+    }
+    for (const stored of this.repo.issues.values()) {
+      if (stored.issue.state !== 'closed' || marked.has(stored.issue.number)) continue;
       for (const comment of this.maintainerComments(stored)) {
         for (const match of (comment.body ?? '').matchAll(DUPLICATE_OF)) this.duplicate(stored, Number(match[2]), match[1], comment.created_at, 'comment:duplicate-of');
       }
@@ -102,7 +115,9 @@ class Miner {
       for (const number of numbers) {
         const issue = this.repo.issues.get(number);
         if (!issue) { this.drop('unknown-target'); continue; }
-        if (issue.issue.state !== 'closed') continue;
+        if (issue.issue.state !== 'closed' || !issue.issue.closed_at) continue;
+        // a pull request fixes an issue that was still open when it was opened; a reference to a long-closed issue is noise
+        if (issue.issue.closed_at < pull.created_at) { this.drop('closed-before-pull'); continue; }
         this.add('fixed-by', number, pull.merged_at, { type: 'pull', number: pull.number, origin: this.repo.name }, labelSource);
       }
     }

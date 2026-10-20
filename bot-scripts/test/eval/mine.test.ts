@@ -4,7 +4,8 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { mineCases, sampleMarkdown } from '../../src/eval/mine.ts';
-import { openRawStore, type RawStore } from '../../src/store/raw.ts';
+import { openRawStore } from '../../src/store/raw.ts';
+import { LINKS_VERSION } from '../../src/eval/github-links.ts';
 import type { Config } from '../../src/config/types.ts';
 import type { EvalCase } from '../../src/eval/cases.ts';
 
@@ -41,8 +42,8 @@ function store(name: string) {
     payload: { pull: { number, title: `PR ${number}`, state: 'closed', merged_at: mergedAt, closed_at: mergedAt, html_url: `https://github.com/o/r/pull/${number}`, user: { login: 'dev' }, created_at: createdAt, updated_at: createdAt, draft: false, body }, reviewComments: [], files: [], complete: true },
   });
   const topic = (id: number) => raw.put({ provider: 'discourse', origin: 'forum.example', kind: 'topic', id: String(id), updatedAt: 'x', payload: { listed: { id }, topic: {} } });
-  const links = (number: number, { kind = 'issue', duplicateOf = [], closes = [], markedAt = null }: { kind?: 'issue' | 'pull'; duplicateOf?: number[]; closes?: number[]; markedAt?: string | null }) => raw.put({
-    provider: 'github', origin: REPO, kind: 'links', id: String(number), updatedAt: 'x', payload: { kind, duplicateOf, closes, markedAt },
+  const links = (number: number, { kind = 'issue', duplicateOf = [], duplicatedBy = [], closes = [], markedAt = null }: { kind?: 'issue' | 'pull'; duplicateOf?: number[]; duplicatedBy?: number[]; closes?: number[]; markedAt?: string | null }) => raw.put({
+    provider: 'github', origin: REPO, kind: 'links', id: String(number), updatedAt: 'x', payload: { version: LINKS_VERSION, kind, duplicateOf, duplicatedBy, closes, markedAt },
   });
   return { raw, issue, pull, topic, links };
 }
@@ -62,6 +63,46 @@ test('labels a timeline duplicate with the later issue as query', () => {
   assert.equal(dup.expectedTier, 'high');
   assert.equal(dup.verified, false);
   assert.equal(report.counts.byRelation.duplicate, 1);
+  s.raw.close();
+});
+
+test('labels a timeline duplicate from the canonical issue, where GitHub records the mark', () => {
+  const s = store('canonical');
+  s.issue(10, { createdAt: '2025-01-01T00:00:00Z', closedAt: '2025-01-05T00:00:00Z' });
+  s.issue(20, { createdAt: '2025-02-01T00:00:00Z', closedAt: '2025-02-02T00:00:00Z' });
+  s.links(10, { duplicatedBy: [20], markedAt: '2025-02-02T00:00:00Z' });
+  const { cases } = mineCases({ config, raw: s.raw });
+  const dup = byId(cases)['dup-20'];
+  assert.ok(dup, JSON.stringify(cases));
+  assert.deepEqual(dup.expected, [{ type: 'issue', number: 10, origin: REPO }]);
+  assert.equal(dup.query.asOf, '2025-02-02T00:00:00Z');
+  assert.equal(dup.labelSource, 'timeline:marked-duplicate');
+  assert.equal(cases.filter((c) => c.relation === 'duplicate').length, 1);
+  s.raw.close();
+});
+
+test('ignores links and duplicate phrases on quoted lines', () => {
+  const s = store('quoted');
+  s.topic(777);
+  s.issue(10, { createdAt: '2025-01-01T00:00:00Z', closedAt: '2025-01-05T00:00:00Z' });
+  s.issue(20, { createdAt: '2025-02-01T00:00:00Z', closedAt: '2025-02-02T00:00:00Z', comments: [
+    { body: '> Similar: https://forum.example/t/x/777\n> duplicate of #10\n\nThanks, looking.', createdAt: '2025-02-02T00:00:00Z' },
+    { body: '> see https://docs.example/docs/quoted\n\nThe answer is https://docs.example/docs/real', createdAt: '2025-02-02T00:00:00Z' },
+  ] });
+  const { cases } = mineCases({ config, raw: s.raw });
+  assert.deepEqual(cases.filter((c) => c.relation !== 'docs'), []);
+  assert.deepEqual(byId(cases)['docs-20'].expected, [{ type: 'docs', url: 'https://docs.example/docs/real' }]);
+  s.raw.close();
+});
+
+test('ignores a fixing pull request opened after the issue was closed', () => {
+  const s = store('stale-fix');
+  s.issue(1, { createdAt: '2019-01-01T00:00:00Z', closedAt: '2019-02-01T00:00:00Z' });
+  s.issue(2, { createdAt: '2025-01-01T00:00:00Z', closedAt: '2025-01-10T00:00:00Z' });
+  s.pull(40, { body: 'Fixes #1 and fixes #2', mergedAt: '2025-01-10T00:00:00Z', createdAt: '2025-01-05T00:00:00Z' });
+  const { cases, report } = mineCases({ config, raw: s.raw });
+  assert.deepEqual(cases.filter((c) => c.relation === 'fixed-by').map((c) => c.id), ['fix-2']);
+  assert.equal(report.dropped['closed-before-pull'], 1);
   s.raw.close();
 });
 
