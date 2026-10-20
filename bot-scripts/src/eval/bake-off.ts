@@ -16,7 +16,7 @@ const MB = 1024 * 1024;
 const pct = (n: number | null) => (n === null ? 'n/a' : n.toFixed(1));
 
 function row(r: BakeOffRow): string {
-  const key = `\`${r.modelKey}\``;
+  const key = `\`${r.modelKey.replaceAll('|', '\\|')}\``;
   if (r.skipped) return `| ${r.name} | ${key} | - | - | - | - | - | - | - | skipped: ${r.skipped} |`;
   return `| ${r.name} | ${key} | ${r.buildSeconds.toFixed(1)} | ${(r.indexBytes / MB).toFixed(1)} | ${Math.round(r.chunksPerSecond)} | ${r.recallAt5.toFixed(1)} | ${r.mrr.toFixed(3)} | ${pct(r.gatePrecision)} | ${pct(r.gateSpecificity)} |  |`;
 }
