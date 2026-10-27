@@ -124,3 +124,14 @@ test('a full build skips removals in the stream', async () => {
   const stats = await writeIndex({ items: items(), embedder: fakeEmbedder(), outPath: path, meta: {} });
   assert.equal(stats.items, 2);
 });
+
+test('logs the embedding progress at most once per minute', async () => {
+  let clock = 0;
+  const lines: string[] = [];
+  async function* many() { for (let i = 0; i < 70; i += 1) { clock += 1_000; yield item(String(i), `text ${i}`); } }
+  await writeIndex({ items: many(), embedder: fakeEmbedder(), outPath: join(tmp, 'progress.sqlite'), meta: {}, log: (l) => lines.push(l), now: () => clock });
+  const progress = lines.filter((l) => l.startsWith('embedding:'));
+  assert.equal(progress.length, 1, lines.join('\n'));
+  assert.match(progress[0], /^embedding: \d+ chunks embedded, 0 reused so far$/);
+  assert.match(lines.at(-1), /^index written: 70 items/);
+});

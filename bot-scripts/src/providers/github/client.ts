@@ -1,4 +1,5 @@
 import { setTimeout as sleep } from 'node:timers/promises';
+import { throttle } from '../../log/progress.ts';
 
 const NEXT_LINK = /<([^>]+)>;\s*rel="next"/;
 /**
@@ -35,6 +36,17 @@ export interface GitHubClientOptions {
   baseUrl?: string;
   sleepImpl?: (ms: number) => Promise<unknown>;
   log?: (line: string) => void;
+  /** Clock for the once-a-minute rate-limit line. */
+  now?: () => number;
+}
+
+/** `GitHub API: N requests left, limit resets in M min`, from the headers GitHub sends on every response. */
+function rateLimitLine(response: Response): string | null {
+  const remaining = response.headers.get('x-ratelimit-remaining');
+  const reset = response.headers.get('x-ratelimit-reset');
+  if (remaining === null || reset === null) return null;
+  const minutes = Math.max(0, Math.round((Number(reset) * 1000 - Date.now()) / 60_000));
+  return `GitHub API: ${remaining} requests left, limit resets in ${minutes} min`;
 }
 
 function buildUrl(path: string, params: Params | undefined, baseUrl: string): string {
@@ -67,7 +79,8 @@ function isTransient(response: Response | null, error: unknown): boolean {
  * Minimal GitHub client: JSON requests with the token, Link pagination, a
  * GraphQL call, retries with backoff on transient errors and one wait on a rate limit.
  */
-export function createGitHubClient({ token, fetchImpl = fetch, baseUrl = 'https://api.github.com', sleepImpl = sleep, log = () => {} }: GitHubClientOptions): GitHubClient {
+export function createGitHubClient({ token, fetchImpl = fetch, baseUrl = 'https://api.github.com', sleepImpl = sleep, log = () => {}, now = () => performance.now() }: GitHubClientOptions): GitHubClient {
+  const tick = throttle(undefined, now);
   const headers = {
     accept: 'application/vnd.github+json',
     authorization: `Bearer ${token}`,
@@ -111,6 +124,7 @@ export function createGitHubClient({ token, fetchImpl = fetch, baseUrl = 'https:
       const body = (await response.text()).slice(0, 200);
       throw new Error(`GitHub ${response.status} for ${url}: ${body}`);
     }
+    tick(() => { const line = rateLimitLine(response); if (line) log(line); });
     return response;
   }
 

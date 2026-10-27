@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto';
 import { existsSync, renameSync, rmSync } from 'node:fs';
 import type { DatabaseSync } from 'node:sqlite';
+import { throttle } from '../log/progress.ts';
 import { openDatabase, createSchema, readMeta, SCHEMA_VERSION } from './db.ts';
 import { quantizeInt8, toBlob } from './vectors.ts';
 import type { Embedder } from '../embed/embedder.ts';
@@ -22,6 +23,8 @@ export interface WriteIndexInput {
   previousPath?: string;
   meta?: Record<string, string>;
   log?: (line: string) => void;
+  /** Clock for the once-a-minute embedding progress line. */
+  now?: () => number;
 }
 
 /** Content hash of a chunk; vectors are reused across builds when it is unchanged. */
@@ -104,7 +107,8 @@ export function insertChunk(stmt: Statements, itemId: number | bigint, chunk: In
  * Builds a new index file from a stream of items. Writes to `<outPath>.tmp` and
  * renames on success, so a failure never destroys the previous index.
  */
-export async function writeIndex({ items, embedder, outPath, previousPath, meta = {}, log = () => {} }: WriteIndexInput): Promise<WriteStats> {
+export async function writeIndex({ items, embedder, outPath, previousPath, meta = {}, log = () => {}, now = () => performance.now() }: WriteIndexInput): Promise<WriteStats> {
+  const tick = throttle(undefined, now);
   const tmpPath = `${outPath}.tmp`;
   rmSync(tmpPath, { force: true });
   const previous = loadPreviousVectors(previousPath, embedder, log);
@@ -146,6 +150,7 @@ export async function writeIndex({ items, embedder, outPath, previousPath, meta 
       }
       db.exec('COMMIT');
       if (pending.length >= EMBED_BATCH) await flush();
+      tick(() => log(`embedding: ${stats.embedded} chunks embedded, ${stats.reused} reused so far`));
     }
     await flush();
     db.exec(`INSERT INTO chunks_fts(chunks_fts) VALUES('rebuild')`);

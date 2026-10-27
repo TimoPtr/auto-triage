@@ -143,3 +143,18 @@ test('graphql throws the first error message', async () => {
   const client = createGitHubClient({ token: 't', fetchImpl });
   await assert.rejects(() => client.graphql('{ x }'), /Could not resolve/);
 });
+
+test('logs the remaining rate limit at most once per minute', async () => {
+  let clock = 0;
+  const lines: string[] = [];
+  const reset = String(Math.floor(Date.now() / 1000) + 25 * 60);
+  const fetchImpl = async () => new Response('{}', { status: 200, headers: { 'x-ratelimit-remaining': '412', 'x-ratelimit-reset': reset } });
+  const client = createGitHubClient({ token: 't', fetchImpl: fetchImpl as unknown as typeof fetch, log: (l) => lines.push(l), now: () => clock });
+  await client.getJson('/repos/o/r');
+  clock = 30_000; await client.getJson('/repos/o/r');
+  assert.deepEqual(lines, []);
+  clock = 61_000; await client.getJson('/repos/o/r');
+  assert.deepEqual(lines, ['GitHub API: 412 requests left, limit resets in 25 min']);
+  clock = 90_000; await client.getJson('/repos/o/r');
+  assert.equal(lines.length, 1);
+});
