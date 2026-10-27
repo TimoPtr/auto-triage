@@ -475,7 +475,12 @@ it from a thin workflow that owns the triggers:
 
 The called workflow checks this repository out at the commit the caller references
 (`job.workflow_repository` at `job.workflow_sha`), so the scripts match the workflow version; pin by SHA once `v1`
-exists. The Copilot engine runs on the workflow token with `copilot-requests: write`; no secret is
+exists. Three things about a called gh-aw workflow, learned on the first runs: its prompt must be
+embedded in the lock (`inlined-imports: true`), since gh-aw otherwise reads the markdown from the
+caller's workspace at run time; every permission a generated job asks for must be granted by the
+caller or GitHub refuses the call at start-up (hence no reaction on the issue, and
+`pull-requests: read` for gh-aw's conclusion jobs); and `GH_AW_AGENT_OUTPUT` is read from the step's
+shell, not through `env.` in the same step. The Copilot engine runs on the workflow token with `copilot-requests: write`; no secret is
 added. A `labeled` event runs only for `ai-recheck` (removed again so it can be re-applied), a
 manual run passes `dispatch`. Who may trigger a run is the caller's choice of events: issues from
 anyone are triaged, so the issue text is treated as data everywhere.
