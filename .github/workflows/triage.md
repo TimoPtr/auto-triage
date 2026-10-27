@@ -143,6 +143,8 @@ tools:
   bash: ["cat", "jq", "head", "wc"]
 timeout-minutes: 15
 strict: true
+# The prompt is embedded in the lock at compile time: a called workflow has no copy of this file in the caller's workspace.
+inlined-imports: true
 # The pre-activation job restores a 100 MB index and embeds the issue; the default slim runner is too small for it.
 runs-on-slim: ubuntu-latest
 
