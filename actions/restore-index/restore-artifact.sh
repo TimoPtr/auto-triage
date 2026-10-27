@@ -16,9 +16,10 @@ dest="$2"
 mode="${3:-file}"
 base="$(basename "$dest")"
 
-read -r repo_id default_branch < <(gh api "repos/$GITHUB_REPOSITORY" --jq '"\(.id) \(.default_branch)"')
+read -r repo_id default_branch < <(gh api "repos/$GITHUB_REPOSITORY" | jq -r '"\(.id) \(.default_branch)"')
+# gh api's --jq takes no jq arguments, so the filter runs in jq itself with the values bound as variables.
 id="$(gh api "repos/$GITHUB_REPOSITORY/actions/artifacts?name=$name&per_page=30" \
-  --jq --arg repo_id "$repo_id" --arg branch "$default_branch" \
+  | jq -r --arg repo_id "$repo_id" --arg branch "$default_branch" \
   '[.artifacts[] | select(.expired == false
       and (.workflow_run.head_repository_id | tostring) == $repo_id
       and (.workflow_run.repository_id | tostring) == $repo_id

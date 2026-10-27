@@ -1,12 +1,25 @@
 #!/usr/bin/env bash
-# Fake gh for the restore-artifact.sh tests: answers the three api calls the script makes.
-# FAKE_ARTIFACT_ID: the id the artifact listing yields (empty for none); FAKE_ZIP: the zip served for the download.
+# Fake gh for the restore-artifact.sh tests: answers the three api calls the script makes and,
+# like the real gh, rejects flags it does not know (jq's --arg is not a gh flag).
+# FAKE_ARTIFACT_ID: the id the artifact listing holds (empty for none); FAKE_ZIP: the zip served for the download.
 set -euo pipefail
 [ "${1:-}" = "api" ] || { echo "fake gh: unsupported command $*" >&2; exit 1; }
 path="$2"
+shift 2
+for arg in "$@"; do
+  case "$arg" in
+    --jq|--paginate|-X|-F|-f|-q|--method|--field|--raw-field) ;;
+    --*) echo "unknown flag: $arg" >&2; exit 1 ;;
+  esac
+done
 case "$path" in
   */actions/artifacts/*/zip) cat "$FAKE_ZIP" ;;
-  */actions/artifacts\?*) echo "${FAKE_ARTIFACT_ID:-}" ;;
-  repos/*) echo "1 main" ;;
+  */actions/artifacts\?*)
+    if [ -n "${FAKE_ARTIFACT_ID:-}" ]; then
+      printf '{"artifacts":[{"id":%s,"expired":false,"created_at":"2026-10-20T00:00:00Z","workflow_run":{"head_repository_id":1,"repository_id":1,"head_branch":"main"}},{"id":7,"expired":false,"created_at":"2026-10-21T00:00:00Z","workflow_run":{"head_repository_id":2,"repository_id":1,"head_branch":"main"}}]}\n' "$FAKE_ARTIFACT_ID"
+    else
+      echo '{"artifacts":[]}'
+    fi ;;
+  repos/*) echo '{"id":1,"default_branch":"main"}' ;;
   *) echo "fake gh: unsupported path $path" >&2; exit 1 ;;
 esac
