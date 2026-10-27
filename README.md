@@ -72,7 +72,8 @@ Everything below is already in place for `home-assistant/android` and can be cop
 4. **Add the triage caller** once the index exists: `knowledge-triage.yml` from "Triage
    workflow", on `issues: [opened, labeled]` and `workflow_dispatch`, calling
    `.github/workflows/triage.lock.yml` of this repository with `contents: read`, `actions: read`,
-   `issues: write` and `copilot-requests: write`. No gh-aw tooling is needed in the consumer; the
+   `issues: write`, `pull-requests: read` and `copilot-requests: write` (GitHub refuses the call at
+   start-up when a job of the called workflow asks for more than the caller grants). No gh-aw tooling is needed in the consumer; the
    repository must have Copilot agentic workflows enabled. With `staged: true` every new issue
    produces a run whose summary holds the comment that would have been posted; read those for a
    week or two, then set `staged: false` (the config is read at run time). "Triage workflow"
@@ -465,6 +466,7 @@ it from a thin workflow that owns the triggers:
           contents: read
           actions: read
           issues: write
+          pull-requests: read     # gh-aw's own conclusion jobs ask for it
           copilot-requests: write
         with:
           issue-number: ${{ github.event.issue.number || inputs.issue-number }}

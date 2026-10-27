@@ -30,7 +30,8 @@ on:
         required: false
         type: string
         default: .github/knowledge-bot.yaml
-  reaction: eyes
+  # No reaction on the issue: gh-aw's activation job would need pull-requests and discussions write for it,
+  # which every caller would have to grant. The run summary is where a triage shows up.
   # issues: write removes the ai-recheck label so it can be applied again. Who can trigger a run is
   # decided by the caller's events: issues from anyone are triaged.
   permissions:
