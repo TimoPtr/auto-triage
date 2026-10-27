@@ -436,7 +436,8 @@ and docs through the reusable workflow, restores it in a second job and runs one
 `.github/workflows/triage.md` is a gh-aw workflow (Copilot engine) that comments on a new issue
 with the closest earlier reports, discussions and docs, and a short answer when it is confident. It
 is a reusable workflow: its compiled `triage.lock.yml` is committed here (the `lock` job of the
-test workflow fails when it is stale; regenerate with `gh aw compile triage`) and a consumer calls
+test workflow recompiles it with the gh-aw version named in its first line and fails on a
+difference; regenerate with `gh aw compile triage`) and a consumer calls
 it from a thin workflow that owns the triggers:
 
     name: Knowledge triage

@@ -37,7 +37,10 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          gh extension install github/gh-aw --pin v0.89.21
+          # The lock names the gh-aw version that produced it; the check recompiles with that same version.
+          version="$(head -1 .github/workflows/triage.lock.yml | grep -o '"compiler_version":"[^"]*"' | cut -d'"' -f4)"
+          [ -n "$version" ] || { echo "triage.lock.yml has no compiler_version in its metadata line" >&2; exit 1; }
+          gh extension install github/gh-aw --pin "$version"
           gh aw compile triage
           git diff --exit-code -- .github/workflows/triage.lock.yml .github/aw/actions-lock.json \
             || { echo "triage.lock.yml is stale: run 'gh aw compile triage' and commit the result" >&2; exit 1; }
