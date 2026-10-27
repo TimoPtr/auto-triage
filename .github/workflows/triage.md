@@ -206,15 +206,15 @@ safe-outputs:
           with:
             name: triage-handoff
             path: /tmp/triage
+        # GH_AW_AGENT_OUTPUT is set by gh-aw in this step's environment; a step's own env map cannot read it.
         - id: render
           env:
             CONFIG: ${{ inputs.config }}
-            AGENT_OUTPUT: ${{ env.GH_AW_AGENT_OUTPUT }}
             RUN_ID: ${{ github.run_id }}
           run: |
             set -euo pipefail
             node "$BOT_SCRIPTS_DIR/src/cli/render-verdict.ts" --config "$CONFIG" --handoff /tmp/triage/handoff.json \
-              --agent-output "$AGENT_OUTPUT" --out-dir /tmp/triage --run-id "$RUN_ID"
+              --agent-output "$GH_AW_AGENT_OUTPUT" --out-dir /tmp/triage --run-id "$RUN_ID"
         # Older bot comments are minimized as outdated, then the new one is posted. Only the triggering issue is written.
         - id: post
           if: steps.render.outputs.post == 'true'
