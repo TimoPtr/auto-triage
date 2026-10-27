@@ -324,7 +324,7 @@ once the case set has grown, and the switch is one `embedding` block in the cons
 
 A consumer holds its config at `.github/knowledge-bot.yaml` and two thin caller workflows. The
 reusable workflows check out this repository at the commit the caller references
-(`github.job_workflow_sha`), so the actions and scripts always match the workflow version.
+(`job.workflow_repository` at `job.workflow_sha`), so the actions and scripts always match the workflow version.
 
 Nightly rebuild, manual run, and a run on every push that touches the config:
 
@@ -471,7 +471,7 @@ it from a thin workflow that owns the triggers:
           label: ${{ github.event.label.name || '' }}
 
 The called workflow checks this repository out at the commit the caller references
-(`github.job_workflow_sha`), so the scripts match the workflow version; pin by SHA once `v1`
+(`job.workflow_repository` at `job.workflow_sha`), so the scripts match the workflow version; pin by SHA once `v1`
 exists. The Copilot engine runs on the workflow token with `copilot-requests: write`; no secret is
 added. A `labeled` event runs only for `ai-recheck` (removed again so it can be re-applied), a
 manual run passes `dispatch`. Who may trigger a run is the caller's choice of events: issues from

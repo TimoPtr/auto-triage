@@ -72,18 +72,11 @@ on:
       with:
         persist-credentials: false
     # The scripts come from this repository at the commit the caller references, like the index workflows.
-    - id: self
-      if: steps.trigger.outputs.run == 'true'
-      env:
-        JOB_WORKFLOW_REF: ${{ github.job_workflow_ref }}
-      run: |
-        set -euo pipefail
-        echo "repo=${JOB_WORKFLOW_REF%%/.github/*}" >> "$GITHUB_OUTPUT"
     - if: steps.trigger.outputs.run == 'true'
       uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       with:
-        repository: ${{ steps.self.outputs.repo }}
-        ref: ${{ github.job_workflow_sha }}
+        repository: ${{ job.workflow_repository }}
+        ref: ${{ job.workflow_sha }}
         path: .knowledge-bot/auto-triage
         persist-credentials: false
     - if: steps.trigger.outputs.run == 'true'
@@ -199,16 +192,10 @@ safe-outputs:
         - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
           with:
             persist-credentials: false
-        - id: self
-          env:
-            JOB_WORKFLOW_REF: ${{ github.job_workflow_ref }}
-          run: |
-            set -euo pipefail
-            echo "repo=${JOB_WORKFLOW_REF%%/.github/*}" >> "$GITHUB_OUTPUT"
         - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
           with:
-            repository: ${{ steps.self.outputs.repo }}
-            ref: ${{ github.job_workflow_sha }}
+            repository: ${{ job.workflow_repository }}
+            ref: ${{ job.workflow_sha }}
             path: .knowledge-bot/auto-triage
             persist-credentials: false
         - uses: ./.knowledge-bot/auto-triage/actions/setup-bot
