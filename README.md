@@ -76,8 +76,10 @@ Everything below is already in place for `home-assistant/android` and can be cop
    start-up when a job of the called workflow asks for more than the caller grants). No gh-aw tooling is needed in the consumer; the
    repository must have Copilot agentic workflows enabled. With `staged: true` every new issue
    produces a run whose summary holds the comment that would have been posted; read those for a
-   week or two, then set `staged: false` (the config is read at run time). "Triage workflow"
-   explains the three jobs and `ai-recheck`.
+   week or two, then set `staged: false` (the config is read at run time). Create the `ai-recheck`
+   label once (`gh label create ai-recheck --description "Ask the knowledge bot to triage this
+   issue again"`): GitHub refuses to apply a label that does not exist. "Triage workflow" explains
+   the three jobs and `ai-recheck`.
 
 5. **Optional: benchmark cases.** Point `evalCases` at a directory and run `mine-cases` once to
    seed it from the repository's own duplicates and fixes ("Benchmark"); the nightly build then
