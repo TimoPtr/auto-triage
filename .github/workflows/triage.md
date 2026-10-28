@@ -70,9 +70,12 @@ on:
         set -euo pipefail
         mkdir -p /tmp/triage
         gh api "repos/$REPO/issues/$ISSUE" > /tmp/triage/issue.json
+    # Only the config is read from the caller's repository; the index and the model come from the cache.
     - if: steps.trigger.outputs.run == 'true'
       uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       with:
+        sparse-checkout: ${{ inputs.config }}
+        sparse-checkout-cone-mode: false
         persist-credentials: false
     # The scripts come from this repository at the commit the caller references, like the index workflows.
     - if: steps.trigger.outputs.run == 'true'
@@ -203,8 +206,11 @@ safe-outputs:
         issues: write
       output: Verdict recorded.
       steps:
+        # Only the config is read from the caller's repository.
         - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
           with:
+            sparse-checkout: ${{ inputs.config }}
+            sparse-checkout-cone-mode: false
             persist-credentials: false
         - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
           with:
