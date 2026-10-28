@@ -64,19 +64,34 @@ function monthYear(date: string): string | null {
   return Number.isNaN(parsed.getTime()) ? null : parsed.toLocaleString('en-US', { month: 'short', year: 'numeric', timeZone: 'UTC' });
 }
 
-function parts(excerpt: Excerpt): string {
-  const outcome = excerpt.outcome;
-  const list = [
-    outcome?.state ?? null,
-    outcome?.fixedBy.length ? `fixed by ${outcome.fixedBy.join(', ')}` : outcome?.reason ?? null,
-    outcome?.solved ? 'solved' : null,
-    monthYear(excerpt.date),
-  ].filter((p): p is string => p !== null);
-  return list.length ? ` (${list.join(', ')})` : '';
+const NOT_RELEASED = 'not yet in a stable release';
+
+/** `in <tag>`, or the not-released note when the index knows the releases, or nothing. */
+function shipped(release: string | null, releasesIndexed: boolean): string | null {
+  if (release) return `in ${release}`;
+  return releasesIndexed ? NOT_RELEASED : null;
+}
+
+/**
+ * The parenthesis after a title: a closed issue or merged pull shows its close month and the
+ * release that ships it; anything else shows its state and creation month.
+ */
+function parts(excerpt: Excerpt, releasesIndexed: boolean): string {
+  const o = excerpt.outcome;
+  const closed = o?.closedAt ? monthYear(o.closedAt) : null;
+  const settled = (o?.state === 'closed' || o?.state === 'merged') && closed !== null;
+  const list: (string | null)[] = [settled ? `${o?.state} ${closed}` : o?.state ?? null];
+  if (o?.fixedBy.length) list.push(`fixed by ${o.fixedBy.join(', ')}`, shipped(o.release, releasesIndexed));
+  else if (o?.state === 'merged') list.push(shipped(o.release, releasesIndexed));
+  else if (o?.reason) list.push(o.reason);
+  if (o?.solved) list.push('solved');
+  if (!settled) list.push(monthYear(excerpt.date));
+  const shown = list.filter((p): p is string => p !== null);
+  return shown.length ? ` (${shown.join(', ')})` : '';
 }
 
 /** One bullet per excerpt; same-repository issues and pulls use the `#n` form GitHub links itself. */
-export function excerptLine(excerpt: Excerpt, repository: string): string {
+export function excerptLine(excerpt: Excerpt, repository: string, releasesIndexed = false): string {
   const title = escapeInline(excerpt.title);
   const url = safeUrl(excerpt.url);
   const link = (label: string) => (url ? `[${label}](${url})` : label);
@@ -85,12 +100,12 @@ export function excerptLine(excerpt: Excerpt, repository: string): string {
     case 'pull': {
       const number = /\/(\d+)$/.exec(excerpt.url)?.[1];
       const ref = excerpt.origin === repository && number ? `#${number} ${title}` : link(title);
-      return `- ${ref}${parts(excerpt)}`;
+      return `- ${ref}${parts(excerpt, releasesIndexed)}`;
     }
-    case 'forum': return `- Forum: ${link(title)}${parts(excerpt)}`;
-    case 'discussion': return `- Discussion: ${link(title)}${parts(excerpt)}`;
+    case 'forum': return `- Forum: ${link(title)}${parts(excerpt, releasesIndexed)}`;
+    case 'discussion': return `- Discussion: ${link(title)}${parts(excerpt, releasesIndexed)}`;
     case 'docs': return `- Docs: ${link(excerpt.heading ? `${title} › ${escapeInline(excerpt.heading)}` : title)}`;
-    default: return `- ${link(title)}${parts(excerpt)}`;
+    default: return `- ${link(title)}${parts(excerpt, releasesIndexed)}`;
   }
 }
 
@@ -103,7 +118,7 @@ function visible(excerpt: Excerpt, developerTopic: boolean): boolean {
 function section(heading: string, ids: number[], handoff: Handoff, developerTopic: boolean, order: (a: Excerpt, b: Excerpt) => number = () => 0): string | null {
   const byId = new Map(handoff.excerpts.map((e) => [e.id, e]));
   const excerpts = ids.map((id) => byId.get(id)).filter((e): e is Excerpt => e !== undefined && visible(e, developerTopic));
-  const lines = excerpts.sort(order).map((e) => excerptLine(e, handoff.repository));
+  const lines = excerpts.sort(order).map((e) => excerptLine(e, handoff.repository, handoff.retrieval.releasesIndexed));
   return lines.length ? [heading, ...lines].join('\n') : null;
 }
 

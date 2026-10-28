@@ -50,6 +50,37 @@ export function fixedBy(db: DatabaseSync, origin: string, issueNumber: number): 
   return rows.map((r) => `#${r.source_id}`);
 }
 
+/** Whether the index holds any release of the origin; without one, a missing release says nothing. */
+export function releasesIndexed(db: DatabaseSync, origin: string): boolean {
+  return db.prepare(`SELECT 1 FROM items WHERE source = 'release' AND origin = ? LIMIT 1`).get(origin) !== undefined;
+}
+
+/**
+ * The tag of the earliest stable release of `origin` whose notes link the pull, or null.
+ * Release notes link merged pulls by their full URL; the number is matched as a whole.
+ */
+export function releaseOf(db: DatabaseSync, origin: string, pullNumber: number): string | null {
+  const rows = db.prepare(
+    `SELECT DISTINCT i.source_id AS tag, i.created_at AS date, c.text AS text FROM items i JOIN chunks c ON c.item_id = i.id
+     WHERE i.source = 'release' AND i.origin = ? AND json_extract(i.outcome, '$.prerelease') IS NOT 1 AND c.text LIKE ?
+     ORDER BY i.created_at`,
+  ).all(origin, `%/${origin}/pull/${pullNumber}%`) as unknown as { tag: string; date: string; text: string }[];
+  const link = new RegExp(`https://github\\.com/${origin.replace(/[.\\]/g, '\\$&')}/pull/${pullNumber}(?!\\d)`);
+  return rows.find((r) => link.test(r.text))?.tag ?? null;
+}
+
+/** The release in which every fixing pull has shipped: the latest of their releases, or null when one is still unreleased. */
+export function fixedIn(db: DatabaseSync, origin: string, fixedBy: string[]): string | null {
+  let latest: { tag: string; date: string } | null = null;
+  for (const ref of fixedBy) {
+    const tag = releaseOf(db, origin, Number(ref.replace('#', '')));
+    if (tag === null) return null;
+    const date = (db.prepare(`SELECT created_at FROM items WHERE source = 'release' AND origin = ? AND source_id = ?`).get(origin, tag) as { created_at: string }).created_at;
+    if (!latest || date > latest.date) latest = { tag, date };
+  }
+  return latest?.tag ?? null;
+}
+
 /** The index row id of an issue, when the index already holds it (re-check of an indexed issue). */
 export function indexedItemId(db: DatabaseSync, origin: string, issueNumber: number): number | null {
   const row = db.prepare(`SELECT id FROM items WHERE source = 'issue' AND origin = ? AND source_id = ?`).get(origin, String(issueNumber)) as { id: number } | undefined;
@@ -64,6 +95,16 @@ function gate(issue: TriageIssue, question: string, db: DatabaseSync | null, emb
   if (question.trim() === '') return 'empty-issue';
   if (!db || !embedder) return 'no-usable-index';
   return 'ok';
+}
+
+/** An excerpt with the fixing pulls of an issue and the stable release that ships an issue's fix or a merged pull. */
+function excerptOf(db: DatabaseSync, result: RetrievalResults[number], id: number) {
+  if (result.source === 'issue') {
+    const fixes = fixedBy(db, result.origin, Number(result.sourceId));
+    return toExcerpt(result, id, fixes, fixes.length ? fixedIn(db, result.origin, fixes) : null);
+  }
+  if (result.source === 'pull' && result.outcome?.state === 'merged') return toExcerpt(result, id, [], releaseOf(db, result.origin, Number(result.sourceId)));
+  return toExcerpt(result, id, []);
 }
 
 /**
@@ -92,9 +133,9 @@ export async function prepareTriage({ config, db, embedder, issue, repository, l
     product: { name: config.product.name, slug: config.product.slug },
     repository,
     issue: { number: issue.number, title: issue.title, body: cleaned.text, logs: cleaned.logs, labels: issue.labels, createdAt: issue.createdAt },
-    excerpts: results.map((r, id) => toExcerpt(r, id, r.source === 'issue' ? fixedBy(db, r.origin, Number(r.sourceId)) : [])),
+    excerpts: results.map((r, id) => excerptOf(db, r, id)),
     thresholds: { answer: settings.answer, links: settings.links },
-    retrieval: { bestSimilarity: results.bestSimilarity, minSimilarity: settings.minSimilarity, indexBuiltAt: readMeta(db).built_at ?? null, demote: demotionOf(results, repository, suppressed, settings.suppressSimilarity) },
+    retrieval: { bestSimilarity: results.bestSimilarity, minSimilarity: settings.minSimilarity, indexBuiltAt: readMeta(db).built_at ?? null, demote: demotionOf(results, repository, suppressed, settings.suppressSimilarity), releasesIndexed: releasesIndexed(db, repository) },
   };
   return { decision: { shouldContinue: true, reason: 'ok', bestSimilarity: results.bestSimilarity }, handoff };
 }

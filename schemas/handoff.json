@@ -46,12 +46,14 @@
           "outcome": {
             "type": ["object", "null"],
             "additionalProperties": false,
-            "required": ["state", "reason", "fixedBy", "solved"],
+            "required": ["state", "reason", "fixedBy", "solved", "closedAt", "release"],
             "properties": {
               "state": { "type": ["string", "null"] },
               "reason": { "type": ["string", "null"] },
               "fixedBy": { "type": "array", "items": { "type": "string" } },
-              "solved": { "type": ["boolean", "null"] }
+              "solved": { "type": ["boolean", "null"] },
+              "closedAt": { "type": ["string", "null"] },
+              "release": { "type": ["string", "null"] }
             }
           },
           "scores": {
@@ -76,9 +78,10 @@
     "retrieval": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["bestSimilarity", "minSimilarity", "indexBuiltAt", "demote"],
+      "required": ["bestSimilarity", "minSimilarity", "indexBuiltAt", "demote", "releasesIndexed"],
       "properties": {
         "bestSimilarity": { "type": "number" },
+        "releasesIndexed": { "type": "boolean" },
         "minSimilarity": { "type": "number" },
         "indexBuiltAt": { "type": ["string", "null"] },
         "demote": {

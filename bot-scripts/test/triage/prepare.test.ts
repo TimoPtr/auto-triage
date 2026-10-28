@@ -7,7 +7,7 @@ import { fileURLToPath } from 'node:url';
 import { writeIndex } from '../../src/store/writer.ts';
 import { openDatabase } from '../../src/store/db.ts';
 import { loadConfig } from '../../src/config/load.ts';
-import { prepareTriage, fixedBy, indexedItemId, LIVE_QUERY_MAX_CHARS } from '../../src/triage/prepare.ts';
+import { prepareTriage, fixedBy, fixedIn, releaseOf, releasesIndexed, indexedItemId, LIVE_QUERY_MAX_CHARS } from '../../src/triage/prepare.ts';
 import type { TriageIssue } from '../../src/triage/issue.ts';
 import type { IndexItem, SourceKind } from '../../src/providers/types.ts';
 import type { Audience } from '../../src/config/types.ts';
@@ -39,6 +39,9 @@ test.before(async () => {
     yield item('1', 'issue', 'Widget stops after reboot', 'Widget stops after reboot', { outcome: { state: 'closed', stateReason: 'completed' } });
     yield item('50', 'pull', 'Fix widget refresh', 'Fix widget refresh after reboot', { outcome: { state: 'merged', linkedIssues: [1, 7] } });
     yield item('51', 'pull', 'Widget rework', 'Widget rework', { outcome: { state: 'closed', linkedIssues: [1] } });
+    yield item('2025.4.1', 'release', '2025.4.1', 'What\'s Changed\n* Fix widget refresh by @x in https://github.com/o/r/pull/50\n* Other change in https://github.com/o/r/pull/505', { createdAt: '2025-04-10T00:00:00Z', outcome: { prerelease: false } });
+    yield item('2025.5.0', 'release', '2025.5.0', 'What\'s Changed\n* Fix widget refresh again by @x in https://github.com/o/r/pull/50', { createdAt: '2025-05-10T00:00:00Z', outcome: { prerelease: false } });
+    yield item('2025.3.9b', 'release', '2025.3.9b', 'Beta\n* https://github.com/o/r/pull/50', { createdAt: '2025-03-20T00:00:00Z', outcome: { prerelease: true } });
     yield item('widgets', 'docs', 'Android Widgets', 'Widgets refresh on tap');
     yield item('EntityWidget.kt', 'code', 'EntityWidget.kt', 'class EntityWidget widget provider', { audience: 'maintainer' });
     const logged = item('7', 'issue', 'Refresh failure', 'Refresh failure on tablets');
@@ -63,6 +66,9 @@ test('builds a handoff with fixedBy from merged pulls', async () => {
   assert.ok(decision.bestSimilarity > 0.9);
   const first = handoff.excerpts.find((e) => e.source === 'issue' && e.url.endsWith('/1'));
   assert.deepEqual(first.outcome.fixedBy, ['#50']);
+  assert.equal(first.outcome.release, '2025.4.1');
+  assert.equal(handoff.excerpts.find((e) => e.source === 'pull' && e.url.endsWith('/50')).outcome.release, '2025.4.1');
+  assert.equal(handoff.retrieval.releasesIndexed, true);
   assert.equal(handoff.issue.body, 'Widget stops updating');
   assert.equal(handoff.issue.number, 900);
   assert.equal(handoff.repository, 'o/r');
@@ -94,6 +100,17 @@ test('excludes the issue itself when it is already indexed', async () => {
   assert.equal(indexedItemId(db, 'o/r', 999), null);
   const { handoff } = await prepareTriage({ ...base(), issue: issueOf({ number: 1, title: 'Widget stops after reboot', body: 'Widget stops after reboot' }) });
   assert.ok(handoff.excerpts.every((e) => !(e.source === 'issue' && e.url.endsWith('/1'))));
+});
+
+test('finds the first stable release whose notes link a pull, matching the number as a whole', () => {
+  assert.equal(releaseOf(db, 'o/r', 50), '2025.4.1');
+  assert.equal(releaseOf(db, 'o/r', 5), null);
+  assert.equal(releaseOf(db, 'o/r', 505), '2025.4.1');
+  assert.equal(releaseOf(db, 'other/r', 50), null);
+  assert.equal(fixedIn(db, 'o/r', ['#50']), '2025.4.1');
+  assert.equal(fixedIn(db, 'o/r', ['#50', '#51']), null);
+  assert.equal(releasesIndexed(db, 'o/r'), true);
+  assert.equal(releasesIndexed(db, 'other/r'), false);
 });
 
 test('fixedBy lists only merged pulls of the origin that link the issue', () => {
