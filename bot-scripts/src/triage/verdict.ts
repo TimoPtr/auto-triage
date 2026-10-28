@@ -1,9 +1,13 @@
 import { existsSync, readFileSync } from 'node:fs';
 import type { Handoff } from './handoff.ts';
+import { escapeInline } from './render.ts';
 
 /** The safe-output type gh-aw writes for the `post-triage-verdict` job. */
 export const VERDICT_TYPE = 'post_triage_verdict';
 export const ANSWER_MAX_CHARS = 1200;
+/** The component and the dropped id tokens go to the run summary: one escaped line each, cut here. */
+export const COMPONENT_MAX_CHARS = 80;
+const NOTE_TOKEN_MAX_CHARS = 40;
 
 export type Tier = 'high' | 'medium' | 'low';
 
@@ -38,13 +42,19 @@ function text(value: unknown, max = Number.POSITIVE_INFINITY): string | null {
   return trimmed === '' ? null : trimmed;
 }
 
+/** Agent text shown in the run summary: trimmed, cut, then escaped like index text. */
+function summaryText(value: unknown, max: number): string | null {
+  const trimmed = text(value, max);
+  return trimmed === null ? null : escapeInline(trimmed) || null;
+}
+
 /** Parses a comma or whitespace separated id list, keeping only ids of the handoff, each once, not already taken. */
 function parseIds(value: unknown, field: string, handoff: Handoff, taken: Set<number>, notes: string[]): number[] {
   const known = new Set(handoff.excerpts.map((e) => e.id));
   const ids: number[] = [];
   for (const token of (text(value) ?? '').split(/[\s,]+/).filter(Boolean)) {
     const id = /^\d+$/.test(token) ? Number(token) : null;
-    if (id === null || !known.has(id)) notes.push(`dropped ${field} id ${token}: not in the handoff`);
+    if (id === null || !known.has(id)) notes.push(`dropped ${field} id ${escapeInline(token.slice(0, NOTE_TOKEN_MAX_CHARS))}: not in the handoff`);
     else if (taken.has(id)) notes.push(`dropped ${field} id ${id}: already listed`);
     else { taken.add(id); ids.push(id); }
   }
@@ -63,7 +73,7 @@ export function parseVerdict(agentOutput: unknown, handoff: Handoff): Verdict {
   const taken = new Set<number>();
   const duplicates = parseIds(last.duplicates, 'duplicates', handoff, taken, notes);
   const related = parseIds(last.related, 'related', handoff, taken, notes);
-  return { confidence, duplicates, related, answer: text(last.answer, ANSWER_MAX_CHARS), component: text(last.component), notes };
+  return { confidence, duplicates, related, answer: text(last.answer, ANSWER_MAX_CHARS), component: summaryText(last.component, COMPONENT_MAX_CHARS), notes };
 }
 
 /** One tier down, for a verdict that resembles a suppressed issue; low stays low. */

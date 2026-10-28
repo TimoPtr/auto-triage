@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { parseVerdict, tierOf, demote, readAgentOutput, VerdictError, ANSWER_MAX_CHARS } from '../../src/triage/verdict.ts';
+import { parseVerdict, tierOf, demote, readAgentOutput, VerdictError, ANSWER_MAX_CHARS, COMPONENT_MAX_CHARS } from '../../src/triage/verdict.ts';
 import { sampleHandoff } from './fixtures.ts';
 import type { Handoff } from '../../src/triage/handoff.ts';
 
@@ -40,6 +40,19 @@ test('rejects a missing or unparsable verdict', () => {
 test('trims the answer at its maximum length', () => {
   const verdict = parseVerdict({ items: [item({ confidence: '90', answer: 'a'.repeat(ANSWER_MAX_CHARS + 100) })] }, handoff);
   assert.equal(verdict.answer.length, ANSWER_MAX_CHARS);
+});
+
+test('keeps the component to one escaped line of bounded length', () => {
+  const verdict = parseVerdict({ items: [item({ confidence: '50', component: ' <b>widgets</b>\n@me  [x](http://e) ' })] }, handoff);
+  assert.equal(verdict.component, 'widgets me \\[x\\]\\(http://e\\)');
+  const long = parseVerdict({ items: [item({ confidence: '50', component: 'w'.repeat(COMPONENT_MAX_CHARS + 50) })] }, handoff);
+  assert.equal(long.component, 'w'.repeat(COMPONENT_MAX_CHARS));
+  assert.equal(parseVerdict({ items: [item({ confidence: '50', component: '<img src=x>' })] }, handoff).component, null);
+});
+
+test('escapes and cuts the dropped id tokens in the notes', () => {
+  const verdict = parseVerdict({ items: [item({ confidence: '50', related: `x_y ${'a'.repeat(100)}` })] }, handoff);
+  assert.deepEqual(verdict.notes, ['dropped related id x\\_y: not in the handoff', `dropped related id ${'a'.repeat(40)}: not in the handoff`]);
 });
 
 test('tiers at the thresholds', () => {

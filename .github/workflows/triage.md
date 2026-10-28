@@ -33,7 +33,9 @@ on:
   # No reaction on the issue: gh-aw's activation job would need pull-requests and discussions write for it,
   # which every caller would have to grant. The run summary is where a triage shows up.
   # issues: write removes the ai-recheck label so it can be applied again. Who can trigger a run is
-  # decided by the caller's events: issues from anyone are triaged.
+  # decided by the caller's events: issues from anyone are triaged, hence roles: all; without it gh-aw
+  # only activates for actors with write access and an outsider's issue stops after pre-activation.
+  roles: all
   permissions:
     contents: read
     actions: read
@@ -160,6 +162,11 @@ steps:
       path: /tmp/gh-aw/agent
 
 safe-outputs:
+  # gh-aw's diagnostic outputs open issues with the agent's own text; the verdict is the only
+  # output this workflow needs, so nothing unrendered can reach the repository.
+  report-missing-tool: false
+  report-missing-data: false
+  report-incomplete: false
   jobs:
     post-triage-verdict:
       description: Records your triage verdict for the issue. Call it exactly once, then stop.

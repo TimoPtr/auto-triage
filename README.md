@@ -484,8 +484,10 @@ caller or GitHub refuses the call at start-up (hence no reaction on the issue, a
 `pull-requests: read` for gh-aw's conclusion jobs); and `GH_AW_AGENT_OUTPUT` is read from the step's
 shell, not through `env.` in the same step. The Copilot engine runs on the workflow token with `copilot-requests: write`; no secret is
 added. A `labeled` event runs only for `ai-recheck` (removed again so it can be re-applied), a
-manual run passes `dispatch`. Who may trigger a run is the caller's choice of events: issues from
-anyone are triaged, so the issue text is treated as data everywhere.
+manual run passes `dispatch`. Who may trigger a run is the caller's choice of events; the template sets
+`roles: all` because gh-aw otherwise activates only for actors with write access and an outsider's
+issue would stop after pre-activation. Issues from anyone are triaged, so the issue text is treated as
+data everywhere.
 
 What happens, in three jobs:
 
@@ -500,9 +502,13 @@ What happens, in three jobs:
    with ids, source, url, date, audience, outcome and scores, and the confidence thresholds) and
    uploads it as the `triage-handoff` artifact. A stopped run spends no agent time and posts nothing.
 2. **Agent.** `claude-sonnet-5` on the Copilot engine, five turns, no network, no GitHub tools,
-   `bash` limited to `cat`, `jq`, `head`, `wc` plus gh-aw's read-only defaults. It reads `/tmp/gh-aw/agent/handoff.json` and calls
+   `bash` limited to `cat`, `jq`, `head`, `wc` plus gh-aw's defaults (`ls`, `grep`, `sort`, `yq` and the like, and
+   its file `write` tool on any path of the sandbox). It reads `/tmp/gh-aw/agent/handoff.json` and calls
    `post_triage_verdict` once with `confidence` (0 to 100), `duplicates` and `related` (excerpt ids),
-   an optional `answer` and `component`. It never sees the index and cannot write anywhere.
+   an optional `answer` and `component`. It never sees the index; what it writes inside the sandbox reaches
+   nothing downstream, since the post job reads the handoff artifact uploaded before the agent ran. gh-aw's diagnostic
+   outputs (`report-missing-tool`, `report-missing-data`, `report-incomplete`), which would open issues with
+   the agent's own text, are disabled: the verdict is the only output.
 3. **post-triage-verdict (no model).** `render-verdict` validates the verdict against the handoff
    (unknown ids are dropped with a note, an unparsable confidence fails the job), picks the tier
    (`high` from `triage.confidence.answer`, default 75; `medium` from `triage.confidence.links`,
