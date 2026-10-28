@@ -46,23 +46,27 @@ test('shows developer excerpts only when the issue talks about building and neve
 
 test('says that a closed pull was not merged', () => {
   assert.equal(excerptLine(handoff.excerpts[7], 'o/r'), '- #5700 Rework widget refresh (closed, not merged, Apr 2025)');
-  const dated = toExcerpt(result({ source: 'pull', sourceId: '5700', url: 'https://github.com/o/r/pull/5700', title: 'Rework widget refresh', createdAt: '2025-04-01T00:00:00Z', outcome: { state: 'closed', closedAt: '2025-06-10T00:00:00Z' } }), 7, []);
-  assert.equal(excerptLine(dated, 'o/r', true), '- #5700 Rework widget refresh (closed Jun 2025, not merged)');
+  const dated = toExcerpt(result({ source: 'pull', sourceId: '5700', url: 'https://github.com/o/r/pull/5700', title: 'Rework widget refresh', createdAt: '2025-04-01T00:00:00Z', outcome: { state: 'closed', closedAt: '2025-06-10T00:00:00Z' } }), 7, [], { release: null, releasesIndexed: true });
+  assert.equal(excerptLine(dated, 'o/r'), '- #5700 Rework widget refresh (closed Jun 2025, not merged)');
 });
 
 test('shows the close month and the stable release that ships the fix', () => {
-  const fixed = toExcerpt(result({ outcome: { state: 'closed', stateReason: 'completed', closedAt: '2025-03-04T00:00:00Z' } }), 0, ['#5644'], '2025.4.1');
-  assert.equal(excerptLine(fixed, 'o/r', true), '- #5610 Widget stops updating after reboot (closed Mar 2025, fixed by #5644, in 2025.4.1)');
-  const pending = toExcerpt(result({ outcome: { state: 'closed', stateReason: 'completed', closedAt: '2025-03-04T00:00:00Z' } }), 0, ['#5644']);
-  assert.equal(excerptLine(pending, 'o/r', true), '- #5610 Widget stops updating after reboot (closed Mar 2025, fixed by #5644, not yet in a stable release)');
-  assert.equal(excerptLine(pending, 'o/r', false), '- #5610 Widget stops updating after reboot (closed Mar 2025, fixed by #5644)');
-  const notPlanned = toExcerpt(result({ outcome: { state: 'closed', stateReason: 'not_planned', closedAt: '2025-03-04T00:00:00Z' } }), 0, []);
-  assert.equal(excerptLine(notPlanned, 'o/r', true), '- #5610 Widget stops updating after reboot (closed Mar 2025, not_planned)');
-  const merged = toExcerpt(result({ source: 'pull', sourceId: '5644', url: 'https://github.com/o/r/pull/5644', title: 'Fix widget refresh', createdAt: '2025-02-01T00:00:00Z', outcome: { state: 'merged', mergedAt: '2025-02-20T00:00:00Z' } }), 6, [], '2025.4.1');
-  assert.equal(excerptLine(merged, 'o/r', true), '- #5644 Fix widget refresh (merged Feb 2025, in 2025.4.1)');
-  assert.equal(excerptLine(toExcerpt(result({ source: 'pull', sourceId: '5644', url: 'https://github.com/o/r/pull/5644', title: 'Fix widget refresh', createdAt: '2025-02-01T00:00:00Z', outcome: { state: 'merged', mergedAt: '2025-02-20T00:00:00Z' } }), 6, []), 'o/r', true), '- #5644 Fix widget refresh (merged Feb 2025, not yet in a stable release)');
-  const open = toExcerpt(result({ outcome: { state: 'open', stateReason: null } }), 0, []);
-  assert.equal(excerptLine(open, 'o/r', true), '- #5610 Widget stops updating after reboot (open, Jan 2025)');
+  const known = (release: string | null) => ({ release, releasesIndexed: true });
+  const closedIssue = { state: 'closed', stateReason: 'completed', closedAt: '2025-03-04T00:00:00Z' };
+  const fixed = toExcerpt(result({ outcome: closedIssue }), 0, ['#5644'], known('2025.4.1'));
+  assert.equal(excerptLine(fixed, 'o/r'), '- #5610 Widget stops updating after reboot (closed Mar 2025, fixed by #5644, in 2025.4.1)');
+  const pending = toExcerpt(result({ outcome: closedIssue }), 0, ['#5644'], known(null));
+  assert.equal(excerptLine(pending, 'o/r'), '- #5610 Widget stops updating after reboot (closed Mar 2025, fixed by #5644, not yet in a stable release)');
+  const unknown = toExcerpt(result({ outcome: closedIssue }), 0, ['#5644']);
+  assert.equal(excerptLine(unknown, 'o/r'), '- #5610 Widget stops updating after reboot (closed Mar 2025, fixed by #5644)');
+  const notPlanned = toExcerpt(result({ outcome: { ...closedIssue, stateReason: 'not_planned' } }), 0, [], known(null));
+  assert.equal(excerptLine(notPlanned, 'o/r'), '- #5610 Widget stops updating after reboot (closed Mar 2025, not planned)');
+  const mergedPull = { source: 'pull' as const, sourceId: '5644', url: 'https://github.com/o/r/pull/5644', title: 'Fix widget refresh', createdAt: '2025-02-01T00:00:00Z', outcome: { state: 'merged', mergedAt: '2025-02-20T00:00:00Z' } };
+  assert.equal(excerptLine(toExcerpt(result(mergedPull), 6, [], known('2025.4.1')), 'o/r'), '- #5644 Fix widget refresh (merged Feb 2025, in 2025.4.1)');
+  assert.equal(excerptLine(toExcerpt(result(mergedPull), 6, [], known(null)), 'o/r'), '- #5644 Fix widget refresh (merged Feb 2025, not yet in a stable release)');
+  assert.equal(excerptLine(toExcerpt(result(mergedPull), 6, []), 'o/r'), '- #5644 Fix widget refresh (merged Feb 2025)');
+  const open = toExcerpt(result({ outcome: { state: 'open', stateReason: null } }), 0, [], known(null));
+  assert.equal(excerptLine(open, 'o/r'), '- #5610 Widget stops updating after reboot (open, Jan 2025)');
 });
 
 test('lists duplicates oldest first and keeps the related order', () => {

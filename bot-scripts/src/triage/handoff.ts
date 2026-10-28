@@ -11,9 +11,10 @@ const SCHEMA_PATH = fileURLToPath(new URL('../../../schemas/handoff.json', impor
 
 /**
  * `closedAt` is the close or merge date; `release` the first stable release that ships the
- * item (a merged pull) or its fix (a closed issue), null when unknown or not yet released.
+ * item (a merged pull) or its fix (a closed issue). `releasesIndexed` says whether a null
+ * `release` means not shipped yet (the origin's releases are indexed) or simply unknown.
  */
-export interface ExcerptOutcome { state: string | null; reason: string | null; fixedBy: string[]; solved: boolean | null; closedAt: string | null; release: string | null }
+export interface ExcerptOutcome { state: string | null; reason: string | null; fixedBy: string[]; solved: boolean | null; closedAt: string | null; release: string | null; releasesIndexed: boolean }
 
 /** The reason shown for a pull request that was closed without being merged. */
 export const NOT_MERGED = 'not merged';
@@ -42,8 +43,7 @@ export interface Handoff {
   excerpts: Excerpt[];
   thresholds: { answer: number; links: number };
   /** `demote` names a suppressed issue retrieved above the floor; the renderer lowers the tier for it. */
-  /** `releasesIndexed` says whether a null `release` means not shipped yet or simply unknown. */
-  retrieval: { bestSimilarity: number; minSimilarity: number; indexBuiltAt: string | null; demote: { issue: number; similarity: number } | null; releasesIndexed: boolean };
+  retrieval: { bestSimilarity: number; minSimilarity: number; indexBuiltAt: string | null; demote: { issue: number; similarity: number } | null };
 }
 
 export class HandoffError extends Error {
@@ -53,21 +53,26 @@ export class HandoffError extends Error {
   }
 }
 
-function outcomeOf(result: RetrievalResult, fixedBy: string[], release: string | null): ExcerptOutcome | null {
+/** The release fields of an excerpt: the shipping release when known, and whether the origin's releases are indexed. */
+export interface ReleaseInfo { release: string | null; releasesIndexed: boolean }
+
+const NO_RELEASE: ReleaseInfo = { release: null, releasesIndexed: false };
+
+function outcomeOf(result: RetrievalResult, fixedBy: string[], { release, releasesIndexed }: ReleaseInfo): ExcerptOutcome | null {
   const outcome = result.outcome ?? {};
   const text = (key: string): string | null => (typeof outcome[key] === 'string' ? (outcome[key] as string) : null);
   const date = (key: string): string | null => text(key)?.slice(0, 10) ?? null;
-  const none = { fixedBy: [], solved: null, closedAt: null, release: null };
+  const none = { fixedBy: [], solved: null, closedAt: null, release: null, releasesIndexed: false };
   switch (result.source) {
-    case 'issue': return { state: text('state'), reason: text('stateReason'), fixedBy, solved: null, closedAt: date('closedAt'), release };
-    case 'pull': return { state: text('state'), reason: text('state') === 'closed' ? NOT_MERGED : null, ...none, closedAt: date('mergedAt') ?? date('closedAt'), release };
+    case 'issue': return { state: text('state'), reason: text('stateReason'), fixedBy, solved: null, closedAt: date('closedAt'), release, releasesIndexed };
+    case 'pull': return { state: text('state'), reason: text('state') === 'closed' ? NOT_MERGED : null, ...none, closedAt: date('mergedAt') ?? date('closedAt'), release, releasesIndexed };
     case 'forum': return { state: null, reason: null, ...none, solved: typeof outcome.solved === 'boolean' ? outcome.solved : null };
     default: return null;
   }
 }
 
 /** One retrieval result as the agent sees it: numbered, trimmed, with the outcome fields the renderer shows. */
-export function toExcerpt(result: RetrievalResult, id: number, fixedBy: string[], release: string | null = null): Excerpt {
+export function toExcerpt(result: RetrievalResult, id: number, fixedBy: string[], release: ReleaseInfo = NO_RELEASE): Excerpt {
   return {
     id, source: result.source, origin: result.origin, url: result.url, title: result.title, heading: result.heading,
     date: result.createdAt.slice(0, 10), audience: result.audience, text: result.text.slice(0, EXCERPT_MAX_CHARS),

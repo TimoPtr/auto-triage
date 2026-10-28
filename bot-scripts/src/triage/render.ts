@@ -1,4 +1,4 @@
-import type { Excerpt, Handoff } from './handoff.ts';
+import type { Excerpt, ExcerptOutcome, Handoff } from './handoff.ts';
 import type { Tier, Verdict } from './verdict.ts';
 
 export const MARKER_PREFIX = '<!-- knowledge-bot v1';
@@ -66,24 +66,24 @@ function monthYear(date: string): string | null {
 
 const NOT_RELEASED = 'not yet in a stable release';
 
-/** `in <tag>`, or the not-released note when the index knows the releases, or nothing. */
-function shipped(release: string | null, releasesIndexed: boolean): string | null {
-  if (release) return `in ${release}`;
-  return releasesIndexed ? NOT_RELEASED : null;
+/** `in <tag>`, or the not-released note when the origin's releases are indexed, or nothing. */
+function shipped(o: ExcerptOutcome): string | null {
+  if (o.release) return `in ${o.release}`;
+  return o.releasesIndexed ? NOT_RELEASED : null;
 }
 
 /**
  * The parenthesis after a title: a closed issue or merged pull shows its close month and the
  * release that ships it; anything else shows its state and creation month.
  */
-function parts(excerpt: Excerpt, releasesIndexed: boolean): string {
+function parts(excerpt: Excerpt): string {
   const o = excerpt.outcome;
   const closed = o?.closedAt ? monthYear(o.closedAt) : null;
   const settled = (o?.state === 'closed' || o?.state === 'merged') && closed !== null;
   const list: (string | null)[] = [settled ? `${o?.state} ${closed}` : o?.state ?? null];
-  if (o?.fixedBy.length) list.push(`fixed by ${o.fixedBy.join(', ')}`, shipped(o.release, releasesIndexed));
-  else if (o?.state === 'merged') list.push(shipped(o.release, releasesIndexed));
-  else if (o?.reason) list.push(o.reason);
+  if (o?.fixedBy.length) list.push(`fixed by ${o.fixedBy.join(', ')}`, shipped(o));
+  else if (o?.state === 'merged') list.push(shipped(o));
+  else if (o?.reason) list.push(o.reason.replace(/_/g, ' '));
   if (o?.solved) list.push('solved');
   if (!settled) list.push(monthYear(excerpt.date));
   const shown = list.filter((p): p is string => p !== null);
@@ -91,7 +91,7 @@ function parts(excerpt: Excerpt, releasesIndexed: boolean): string {
 }
 
 /** One bullet per excerpt; same-repository issues and pulls use the `#n` form GitHub links itself. */
-export function excerptLine(excerpt: Excerpt, repository: string, releasesIndexed = false): string {
+export function excerptLine(excerpt: Excerpt, repository: string): string {
   const title = escapeInline(excerpt.title);
   const url = safeUrl(excerpt.url);
   const link = (label: string) => (url ? `[${label}](${url})` : label);
@@ -100,12 +100,12 @@ export function excerptLine(excerpt: Excerpt, repository: string, releasesIndexe
     case 'pull': {
       const number = /\/(\d+)$/.exec(excerpt.url)?.[1];
       const ref = excerpt.origin === repository && number ? `#${number} ${title}` : link(title);
-      return `- ${ref}${parts(excerpt, releasesIndexed)}`;
+      return `- ${ref}${parts(excerpt)}`;
     }
-    case 'forum': return `- Forum: ${link(title)}${parts(excerpt, releasesIndexed)}`;
-    case 'discussion': return `- Discussion: ${link(title)}${parts(excerpt, releasesIndexed)}`;
+    case 'forum': return `- Forum: ${link(title)}${parts(excerpt)}`;
+    case 'discussion': return `- Discussion: ${link(title)}${parts(excerpt)}`;
     case 'docs': return `- Docs: ${link(excerpt.heading ? `${title} › ${escapeInline(excerpt.heading)}` : title)}`;
-    default: return `- ${link(title)}${parts(excerpt, releasesIndexed)}`;
+    default: return `- ${link(title)}${parts(excerpt)}`;
   }
 }
 
@@ -118,7 +118,7 @@ function visible(excerpt: Excerpt, developerTopic: boolean): boolean {
 function section(heading: string, ids: number[], handoff: Handoff, developerTopic: boolean, order: (a: Excerpt, b: Excerpt) => number = () => 0): string | null {
   const byId = new Map(handoff.excerpts.map((e) => [e.id, e]));
   const excerpts = ids.map((id) => byId.get(id)).filter((e): e is Excerpt => e !== undefined && visible(e, developerTopic));
-  const lines = excerpts.sort(order).map((e) => excerptLine(e, handoff.repository, handoff.retrieval.releasesIndexed));
+  const lines = excerpts.sort(order).map((e) => excerptLine(e, handoff.repository));
   return lines.length ? [heading, ...lines].join('\n') : null;
 }
 

@@ -67,8 +67,8 @@ test('builds a handoff with fixedBy from merged pulls', async () => {
   const first = handoff.excerpts.find((e) => e.source === 'issue' && e.url.endsWith('/1'));
   assert.deepEqual(first.outcome.fixedBy, ['#50']);
   assert.equal(first.outcome.release, '2025.4.1');
+  assert.equal(first.outcome.releasesIndexed, true);
   assert.equal(handoff.excerpts.find((e) => e.source === 'pull' && e.url.endsWith('/50')).outcome.release, '2025.4.1');
-  assert.equal(handoff.retrieval.releasesIndexed, true);
   assert.equal(handoff.issue.body, 'Widget stops updating');
   assert.equal(handoff.issue.number, 900);
   assert.equal(handoff.repository, 'o/r');

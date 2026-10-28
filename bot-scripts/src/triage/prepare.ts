@@ -5,7 +5,7 @@ import { retrieve, type RetrievalResults } from '../retrieval/retrieve.ts';
 import type { RankedList } from '../retrieval/rrf.ts';
 import { readMeta } from '../store/db.ts';
 import { cleanIssueText } from '../text/clean.ts';
-import { HANDOFF_VERSION, HANDOFF_EXCERPTS, toExcerpt, type Handoff } from './handoff.ts';
+import { HANDOFF_VERSION, HANDOFF_EXCERPTS, toExcerpt, type Excerpt, type Handoff, type ReleaseInfo } from './handoff.ts';
 import type { TriageIssue } from './issue.ts';
 import { triageSettings } from './settings.ts';
 
@@ -98,12 +98,17 @@ function gate(issue: TriageIssue, question: string, db: DatabaseSync | null, emb
 }
 
 /** An excerpt with the fixing pulls of an issue and the stable release that ships an issue's fix or a merged pull. */
-function excerptOf(db: DatabaseSync, result: RetrievalResults[number], id: number) {
+function excerptOf(db: DatabaseSync, result: RetrievalResults[number], id: number, indexed: Map<string, boolean>): Excerpt {
+  const known = (origin: string): boolean => {
+    if (!indexed.has(origin)) indexed.set(origin, releasesIndexed(db, origin));
+    return indexed.get(origin) as boolean;
+  };
+  const info = (release: string | null): ReleaseInfo => ({ release, releasesIndexed: known(result.origin) });
   if (result.source === 'issue') {
     const fixes = fixedBy(db, result.origin, Number(result.sourceId));
-    return toExcerpt(result, id, fixes, fixes.length ? fixedIn(db, result.origin, fixes) : null);
+    return toExcerpt(result, id, fixes, info(fixes.length ? fixedIn(db, result.origin, fixes) : null));
   }
-  if (result.source === 'pull' && result.outcome?.state === 'merged') return toExcerpt(result, id, [], releaseOf(db, result.origin, Number(result.sourceId)));
+  if (result.source === 'pull' && result.outcome?.state === 'merged') return toExcerpt(result, id, [], info(releaseOf(db, result.origin, Number(result.sourceId))));
   return toExcerpt(result, id, []);
 }
 
@@ -128,14 +133,15 @@ export async function prepareTriage({ config, db, embedder, issue, repository, l
   if (results.bestSimilarity < settings.minSimilarity) return stop('below-min-similarity', results.bestSimilarity);
   if (results.length === 0) return stop('no-excerpts', results.bestSimilarity);
 
+  const indexed = new Map<string, boolean>();
   const handoff: Handoff = {
     version: HANDOFF_VERSION,
     product: { name: config.product.name, slug: config.product.slug },
     repository,
     issue: { number: issue.number, title: issue.title, body: cleaned.text, logs: cleaned.logs, labels: issue.labels, createdAt: issue.createdAt },
-    excerpts: results.map((r, id) => excerptOf(db, r, id)),
+    excerpts: results.map((r, id) => excerptOf(db, r, id, indexed)),
     thresholds: { answer: settings.answer, links: settings.links },
-    retrieval: { bestSimilarity: results.bestSimilarity, minSimilarity: settings.minSimilarity, indexBuiltAt: readMeta(db).built_at ?? null, demote: demotionOf(results, repository, suppressed, settings.suppressSimilarity), releasesIndexed: releasesIndexed(db, repository) },
+    retrieval: { bestSimilarity: results.bestSimilarity, minSimilarity: settings.minSimilarity, indexBuiltAt: readMeta(db).built_at ?? null, demote: demotionOf(results, repository, suppressed, settings.suppressSimilarity) },
   };
   return { decision: { shouldContinue: true, reason: 'ok', bestSimilarity: results.bestSimilarity }, handoff };
 }

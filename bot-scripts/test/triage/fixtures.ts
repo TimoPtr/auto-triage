@@ -13,5 +13,5 @@ export const sampleHandoff = (): Handoff => ({
   issue: { number: 7612, title: 'Widget frozen', body: 'Widget frozen after reboot', logs: null, labels: [], createdAt: '2026-10-20T00:00:00Z' },
   excerpts: [toExcerpt(result(), 0, ['#5644'])],
   thresholds: { answer: 75, links: 45 },
-  retrieval: { bestSimilarity: 0.8, minSimilarity: 0.35, indexBuiltAt: '2026-10-19T03:00:00Z', demote: null, releasesIndexed: false },
+  retrieval: { bestSimilarity: 0.8, minSimilarity: 0.35, indexBuiltAt: '2026-10-19T03:00:00Z', demote: null },
 });
