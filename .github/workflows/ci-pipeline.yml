@@ -12,15 +12,15 @@ jobs:
   config:
     uses: ./.github/workflows/selfcheck.yml
     permissions:
-      contents: read
+      contents: read  # checkout
     with:
       config: examples/selfcheck/knowledge-bot.yaml
   build:
     uses: ./.github/workflows/build-index.yml
     permissions:
-      contents: read
-      actions: read
-      issues: write
+      contents: read  # checkouts
+      actions: read  # artifacts of earlier runs
+      issues: write  # feedback digest and eval regression issues
     with:
       slug: selfcheck
       config: examples/selfcheck/knowledge-bot.yaml
@@ -31,8 +31,8 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     permissions:
-      contents: read
-      actions: read
+      contents: read  # checkout
+      actions: read  # restore-index downloads the index the build job published
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:

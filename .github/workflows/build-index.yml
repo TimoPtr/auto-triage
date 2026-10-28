@@ -39,9 +39,9 @@ jobs:
       group: knowledge-index-${{ inputs.slug }}
       cancel-in-progress: false
     permissions:
-      contents: read
-      actions: read
-      issues: write
+      contents: read  # checkouts of the consumer repository and of this one
+      actions: read  # restore-index and the feedback step download artifacts of earlier runs
+      issues: write  # report-feedback keeps the digest issue, report-eval-status the regression issue
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:

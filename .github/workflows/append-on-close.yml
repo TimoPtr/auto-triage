@@ -27,8 +27,8 @@ jobs:
       group: knowledge-index-${{ inputs.slug }}
       cancel-in-progress: false
     permissions:
-      contents: read
-      actions: read
+      contents: read  # checkouts of the consumer repository and of this one
+      actions: read  # restore-index downloads the index artifact of an earlier run
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
