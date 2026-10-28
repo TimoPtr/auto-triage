@@ -1,6 +1,6 @@
 ---
 name: Set up the knowledge bot scripts
-description: Installs bot-scripts next to this action with Node 24 and restores the embedding model cache.
+description: Installs bot-scripts next to this action with Node 24 and restores the embedding model cache. Later steps read the paths from the outputs.
 inputs:
   config:
     description: Consumer config path, hashed into the model cache key.
@@ -30,8 +30,6 @@ runs:
         set -euo pipefail
         dir="$(cd "$ACTION_PATH/../../bot-scripts" && pwd)"
         echo "dir=$dir" >> "$GITHUB_OUTPUT"
-        echo "BOT_SCRIPTS_DIR=$dir" >> "$GITHUB_ENV"
-        echo "KB_MODEL_CACHE=$MODEL_CACHE" >> "$GITHUB_ENV"
         mkdir -p "$MODEL_CACHE"
     - shell: bash
       env:

@@ -33,6 +33,7 @@ permissions: {}
 
 jobs:
   build:
+    name: Build the index
     runs-on: ubuntu-latest
     timeout-minutes: ${{ inputs.timeout-minutes }}
     concurrency:
@@ -55,7 +56,8 @@ jobs:
           ref: ${{ job.workflow_sha }}
           path: .knowledge-bot/auto-triage
           persist-credentials: false
-      - uses: ./.knowledge-bot/auto-triage/actions/setup-bot
+      - id: bot
+        uses: ./.knowledge-bot/auto-triage/actions/setup-bot
         with:
           config: ${{ inputs.config }}
       - id: previous
@@ -83,6 +85,8 @@ jobs:
           printf '%s\n' "${args[@]}" > .knowledge-bot/checkout-args
       - id: build
         env:
+          BOT_SCRIPTS_DIR: ${{ steps.bot.outputs.bot-scripts-dir }}
+          KB_MODEL_CACHE: ${{ steps.bot.outputs.model-cache }}
           GITHUB_TOKEN: ${{ github.token }}
           CONFIG: ${{ inputs.config }}
           INDEX: ${{ steps.previous.outputs.index-path }}
@@ -117,6 +121,7 @@ jobs:
       - id: feedback
         if: success() && hashFiles(steps.previous.outputs.raw-path) != ''
         env:
+          BOT_SCRIPTS_DIR: ${{ steps.bot.outputs.bot-scripts-dir }}
           GITHUB_TOKEN: ${{ github.token }}
           CONFIG: ${{ inputs.config }}
           RAW: ${{ steps.previous.outputs.raw-path }}
@@ -149,6 +154,8 @@ jobs:
       - id: eval
         if: success()
         env:
+          BOT_SCRIPTS_DIR: ${{ steps.bot.outputs.bot-scripts-dir }}
+          KB_MODEL_CACHE: ${{ steps.bot.outputs.model-cache }}
           CONFIG: ${{ inputs.config }}
           INDEX: ${{ steps.previous.outputs.index-path }}
         run: |
@@ -174,6 +181,8 @@ jobs:
           retention-days: 30
       - id: compare
         if: steps.previous-eval.outputs.id != '' && steps.previous-eval.outputs.id != '0'
+        env:
+          BOT_SCRIPTS_DIR: ${{ steps.bot.outputs.bot-scripts-dir }}
         run: |
           set -euo pipefail
           status=0
@@ -200,6 +209,7 @@ jobs:
       - id: status
         if: always() && steps.previous.outcome == 'success'
         env:
+          BOT_SCRIPTS_DIR: ${{ steps.bot.outputs.bot-scripts-dir }}
           CONFIG: ${{ inputs.config }}
           INDEX: ${{ steps.previous.outputs.index-path }}
         run: node "$BOT_SCRIPTS_DIR/src/cli/index-status.ts" --config "$CONFIG" --index "$INDEX"

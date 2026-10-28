@@ -80,11 +80,13 @@ on:
         ref: ${{ job.workflow_sha }}
         path: .knowledge-bot/auto-triage
         persist-credentials: false
-    - if: steps.trigger.outputs.run == 'true'
+    - id: bot
+      if: steps.trigger.outputs.run == 'true'
       uses: ./.knowledge-bot/auto-triage/actions/setup-bot
     - id: config
       if: steps.trigger.outputs.run == 'true'
       env:
+        BOT_SCRIPTS_DIR: ${{ steps.bot.outputs.bot-scripts-dir }}
         CONFIG: ${{ inputs.config }}
       run: node "$BOT_SCRIPTS_DIR/src/cli/validate-config.ts" --config "$CONFIG"
     - id: index
@@ -106,6 +108,8 @@ on:
     - id: prepare
       if: steps.trigger.outputs.run == 'true'
       env:
+        BOT_SCRIPTS_DIR: ${{ steps.bot.outputs.bot-scripts-dir }}
+        KB_MODEL_CACHE: ${{ steps.bot.outputs.model-cache }}
         CONFIG: ${{ inputs.config }}
         REPO: ${{ github.repository }}
         INDEX: ${{ steps.index.outputs.index-path }}
@@ -201,7 +205,8 @@ safe-outputs:
             ref: ${{ job.workflow_sha }}
             path: .knowledge-bot/auto-triage
             persist-credentials: false
-        - uses: ./.knowledge-bot/auto-triage/actions/setup-bot
+        - id: bot
+          uses: ./.knowledge-bot/auto-triage/actions/setup-bot
         - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
           with:
             name: triage-handoff
@@ -209,6 +214,7 @@ safe-outputs:
         # GH_AW_AGENT_OUTPUT is set by gh-aw in this step's environment; a step's own env map cannot read it.
         - id: render
           env:
+            BOT_SCRIPTS_DIR: ${{ steps.bot.outputs.bot-scripts-dir }}
             CONFIG: ${{ inputs.config }}
             RUN_ID: ${{ github.run_id }}
           run: |

@@ -9,8 +9,14 @@ on:  # yamllint disable-line rule:truthy
 permissions:
   contents: read  # checkout only
 
+# One run per branch at a time; a newer push supersedes the running one.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   test:
+    name: Unit tests
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -27,6 +33,7 @@ jobs:
       - run: npm test
         working-directory: bot-scripts
   lock:
+    name: Triage lock is current
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:

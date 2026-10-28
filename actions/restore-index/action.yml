@@ -72,8 +72,11 @@ runs:
         echo "index=${INDEX:-.knowledge-bot/$SLUG.sqlite}" >> "$GITHUB_OUTPUT"
         echo "raw=${RAW:-.knowledge-bot/$SLUG.raw.sqlite}" >> "$GITHUB_OUTPUT"
         mkdir -p .knowledge-bot
+    # The scripts live next to this action, two levels up, whichever checkout the action came from.
     - id: versions
       shell: bash
+      env:
+        BOT_SCRIPTS_DIR: ${{ github.action_path }}/../../bot-scripts
       run: node "$BOT_SCRIPTS_DIR/src/cli/index-status.ts" --versions
     - id: cache-index
       uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
@@ -92,6 +95,7 @@ runs:
     - id: cached
       shell: bash
       env:
+        BOT_SCRIPTS_DIR: ${{ github.action_path }}/../../bot-scripts
         CONFIG: ${{ inputs.config }}
         INDEX: ${{ steps.paths.outputs.index }}
         FRESH_DAYS: ${{ inputs.fresh-days }}
@@ -115,6 +119,7 @@ runs:
     - id: status
       shell: bash
       env:
+        BOT_SCRIPTS_DIR: ${{ github.action_path }}/../../bot-scripts
         CONFIG: ${{ inputs.config }}
         INDEX: ${{ steps.paths.outputs.index }}
         FRESH_DAYS: ${{ inputs.fresh-days }}

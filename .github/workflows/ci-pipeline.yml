@@ -8,15 +8,20 @@ on:  # yamllint disable-line rule:truthy
 
 permissions: {}
 
+# One self-test per branch at a time; a newer push supersedes the running one.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   config:
-    uses: ./.github/workflows/selfcheck.yml
+    uses: $/.github/workflows/selfcheck.yml
     permissions:
       contents: read  # checkout
     with:
       config: examples/selfcheck/knowledge-bot.yaml
   build:
-    uses: ./.github/workflows/build-index.yml
+    uses: $/.github/workflows/build-index.yml
     permissions:
       contents: read  # checkouts
       actions: read  # artifacts of earlier runs
@@ -27,6 +32,7 @@ jobs:
       timeout-minutes: 30
       tracking: false
   verify:
+    name: Query the published index
     needs: build
     runs-on: ubuntu-latest
     timeout-minutes: 15
@@ -37,7 +43,8 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - uses: ./actions/setup-bot
+      - id: bot
+        uses: ./actions/setup-bot
         with:
           config: examples/selfcheck/knowledge-bot.yaml
       - id: index
@@ -48,6 +55,8 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
       - env:
+          BOT_SCRIPTS_DIR: ${{ steps.bot.outputs.bot-scripts-dir }}
+          KB_MODEL_CACHE: ${{ steps.bot.outputs.model-cache }}
           STATUS: ${{ steps.index.outputs.status }}
           SOURCE: ${{ steps.index.outputs.source }}
           INDEX: ${{ steps.index.outputs.index-path }}

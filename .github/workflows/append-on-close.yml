@@ -21,6 +21,7 @@ permissions: {}
 
 jobs:
   append:
+    name: Append the item
     runs-on: ubuntu-latest
     timeout-minutes: 20
     concurrency:
@@ -40,7 +41,8 @@ jobs:
           ref: ${{ job.workflow_sha }}
           path: .knowledge-bot/auto-triage
           persist-credentials: false
-      - uses: ./.knowledge-bot/auto-triage/actions/setup-bot
+      - id: bot
+        uses: ./.knowledge-bot/auto-triage/actions/setup-bot
         with:
           config: ${{ inputs.config }}
       - id: index
@@ -57,6 +59,8 @@ jobs:
       - id: append
         if: steps.index.outputs.usable == 'true'
         env:
+          BOT_SCRIPTS_DIR: ${{ steps.bot.outputs.bot-scripts-dir }}
+          KB_MODEL_CACHE: ${{ steps.bot.outputs.model-cache }}
           GITHUB_TOKEN: ${{ github.token }}
           CONFIG: ${{ inputs.config }}
           INDEX: ${{ steps.index.outputs.index-path }}

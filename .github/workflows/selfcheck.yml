@@ -13,10 +13,11 @@ permissions: {}
 
 jobs:
   validate:
+    name: Validate the config
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
-      contents: read
+      contents: read  # checkouts
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -28,10 +29,12 @@ jobs:
           ref: ${{ job.workflow_sha }}
           path: .knowledge-bot/auto-triage
           persist-credentials: false
-      - uses: ./.knowledge-bot/auto-triage/actions/setup-bot
+      - id: bot
+        uses: ./.knowledge-bot/auto-triage/actions/setup-bot
         with:
           config: ${{ inputs.config }}
       - env:
+          BOT_SCRIPTS_DIR: ${{ steps.bot.outputs.bot-scripts-dir }}
           CONFIG: ${{ inputs.config }}
         run: |
           set -euo pipefail

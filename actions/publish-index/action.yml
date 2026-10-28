@@ -25,11 +25,14 @@ runs:
   steps:
     - id: versions
       shell: bash
+      env:
+        BOT_SCRIPTS_DIR: ${{ github.action_path }}/../../bot-scripts
       run: node "$BOT_SCRIPTS_DIR/src/cli/index-status.ts" --versions
     - id: status
       if: inputs.publish-index == 'true'
       shell: bash
       env:
+        BOT_SCRIPTS_DIR: ${{ github.action_path }}/../../bot-scripts
         CONFIG: ${{ inputs.config }}
         INDEX: ${{ inputs.index-path }}
       run: node "$BOT_SCRIPTS_DIR/src/cli/index-status.ts" --config "$CONFIG" --index "$INDEX"
