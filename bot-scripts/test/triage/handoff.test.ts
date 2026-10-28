@@ -10,6 +10,7 @@ test('maps a retrieval result to an excerpt with the outcome of its source', () 
   assert.equal(toExcerpt(result({ source: 'docs', outcome: null }), 1, []).outcome, null);
   assert.deepEqual(toExcerpt(result({ source: 'forum', outcome: { solved: true } }), 2, []).outcome, { state: null, reason: null, fixedBy: [], solved: true });
   assert.deepEqual(toExcerpt(result({ source: 'pull', outcome: { state: 'merged' } }), 3, ['#1']).outcome, { state: 'merged', reason: null, fixedBy: [], solved: null });
+  assert.deepEqual(toExcerpt(result({ source: 'pull', outcome: { state: 'closed' } }), 5, []).outcome, { state: 'closed', reason: 'not merged', fixedBy: [], solved: null });
   assert.equal(toExcerpt(result({ text: 'x'.repeat(2000) }), 4, []).text.length, EXCERPT_MAX_CHARS);
 });
 

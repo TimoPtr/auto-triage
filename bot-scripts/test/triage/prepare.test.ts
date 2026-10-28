@@ -52,7 +52,7 @@ test.after(() => db?.close());
 
 const issueOf = (over: Partial<TriageIssue> = {}): TriageIssue => ({
   number: 900, title: 'Widget stops updating', body: '<!-- template -->\nWidget stops updating', labels: ['bug'], createdAt: '2026-10-20T00:00:00Z',
-  authorType: 'User', isPullRequest: false, state: 'open', ...over,
+  authorType: 'User', isPullRequest: false, state: 'open', subIssues: 0, ...over,
 });
 const base = () => ({ config, db, embedder, issue: issueOf(), repository: 'o/r', now: new Date('2026-10-20T00:00:00Z') });
 
@@ -73,8 +73,9 @@ test('builds a handoff with fixedBy from merged pulls', async () => {
   assert.ok(handoff.excerpts.some((e) => e.audience === 'maintainer'), 'maintainer excerpts reach the agent');
 });
 
-test('skips bot authors, pull requests and empty issues', async () => {
+test('skips bot authors, pull requests, parent issues and empty issues', async () => {
   assert.equal((await prepareTriage({ ...base(), issue: issueOf({ authorType: 'Bot' }) })).decision.reason, 'bot-author');
+  assert.equal((await prepareTriage({ ...base(), issue: issueOf({ subIssues: 2 }) })).decision.reason, 'parent-issue');
   assert.equal((await prepareTriage({ ...base(), issue: issueOf({ isPullRequest: true }) })).decision.reason, 'pull-request');
   const empty = await prepareTriage({ ...base(), issue: issueOf({ title: '', body: '<!-- only a comment -->' }) });
   assert.equal(empty.decision.reason, 'empty-issue');

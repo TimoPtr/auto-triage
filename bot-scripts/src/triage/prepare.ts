@@ -12,7 +12,7 @@ import { triageSettings } from './settings.ts';
 /** The live forum search carries the question in a URL; the cleaned text is cut to this. */
 export const LIVE_QUERY_MAX_CHARS = 300;
 
-export type GateReason = 'ok' | 'pull-request' | 'bot-author' | 'empty-issue' | 'no-usable-index' | 'below-min-similarity' | 'no-excerpts';
+export type GateReason = 'ok' | 'pull-request' | 'bot-author' | 'parent-issue' | 'empty-issue' | 'no-usable-index' | 'below-min-similarity' | 'no-excerpts';
 
 export interface TriageDecision { shouldContinue: boolean; reason: GateReason; bestSimilarity: number }
 
@@ -59,6 +59,8 @@ export function indexedItemId(db: DatabaseSync, origin: string, issueNumber: num
 function gate(issue: TriageIssue, question: string, db: DatabaseSync | null, embedder: Embedder | null): GateReason {
   if (issue.isPullRequest) return 'pull-request';
   if (issue.authorType === 'Bot') return 'bot-author';
+  // an issue tracking sub-issues retrieves its own children; a comment listing them adds nothing
+  if (issue.subIssues > 0) return 'parent-issue';
   if (question.trim() === '') return 'empty-issue';
   if (!db || !embedder) return 'no-usable-index';
   return 'ok';

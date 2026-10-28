@@ -13,6 +13,8 @@ export interface TriageIssue {
   authorType: string;
   isPullRequest: boolean;
   state: string;
+  /** Sub-issues tracked under this issue; a parent issue is not triaged. */
+  subIssues: number;
 }
 
 export interface ApiIssue {
@@ -24,6 +26,7 @@ export interface ApiIssue {
   user?: { type?: string } | null;
   pull_request?: unknown;
   state: string;
+  sub_issues_summary?: { total?: number } | null;
 }
 
 /** Reads one issue to triage; the repository and number are checked before any request. */
@@ -45,5 +48,6 @@ export function toTriageIssue(issue: ApiIssue): TriageIssue {
     authorType: issue.user?.type ?? 'User',
     isPullRequest: issue.pull_request !== undefined && issue.pull_request !== null,
     state: issue.state,
+    subIssues: issue.sub_issues_summary?.total ?? 0,
   };
 }

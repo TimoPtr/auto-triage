@@ -15,6 +15,8 @@ const handoff: Handoff = {
     toExcerpt(result({ source: 'code', sourceId: 'Widget.kt', url: 'https://github.com/o/r/blob/main/Widget.kt', title: 'Widget.kt', audience: 'maintainer', createdAt: '1970-01-01T00:00:00Z', outcome: null }), 4, []),
     toExcerpt(result({ source: 'issue', origin: 'other/repo', sourceId: '12', url: 'https://github.com/other/repo/issues/12', title: 'Core widget bug', createdAt: '2024-06-01T00:00:00Z', outcome: { state: 'open', stateReason: null } }), 5, []),
     toExcerpt(result({ source: 'pull', sourceId: '5644', url: 'https://github.com/o/r/pull/5644', title: 'Fix widget refresh', createdAt: '2025-02-01T00:00:00Z', outcome: { state: 'merged' } }), 6, []),
+    toExcerpt(result({ source: 'pull', sourceId: '5700', url: 'https://github.com/o/r/pull/5700', title: 'Rework widget refresh', createdAt: '2025-04-01T00:00:00Z', outcome: { state: 'closed' } }), 7, []),
+    toExcerpt(result({ sourceId: '7001', url: 'https://github.com/o/r/issues/7001', title: 'Widget frozen again', createdAt: '2026-05-01T00:00:00Z', outcome: { state: 'open', stateReason: null } }), 8, []),
   ],
 };
 const verdict = (over: Partial<Verdict> = {}): Verdict => ({ confidence: 80, duplicates: [0], related: [1, 2], answer: 'Reboot fixes it.', component: null, notes: [], ...over });
@@ -40,6 +42,16 @@ test('shows developer excerpts only when the issue talks about building and neve
   assert.ok(!plain.includes('Building the app')); assert.ok(!plain.includes('Widget.kt')); assert.ok(plain.includes('Refresh behavior'));
   const dev = renderComment({ handoff: { ...handoff, issue: { ...handoff.issue, body: 'The Gradle build fails on minimal' } }, verdict: verdict({ duplicates: [], related: [3, 4] }), tier: 'medium', runId: '1' });
   assert.ok(dev.includes('- Docs: [Building the app](https://dev.example/build)')); assert.ok(!dev.includes('Widget.kt'));
+});
+
+test('says that a closed pull was not merged', () => {
+  assert.equal(excerptLine(handoff.excerpts[7], 'o/r'), '- #5700 Rework widget refresh (closed, not merged, Apr 2025)');
+});
+
+test('lists duplicates oldest first and keeps the related order', () => {
+  const body = renderComment({ handoff, verdict: verdict({ duplicates: [8, 0], related: [2, 1], answer: null }), tier: 'medium', runId: '1' });
+  assert.match(body, /earlier reports\*\*\n- #5610 Widget stops updating after reboot \(closed, fixed by #5644, Jan 2025\)\n- #7001 Widget frozen again \(open, May 2026\)\n/);
+  assert.match(body, /docs\*\*\n- Docs: \[Widgets › Refresh behavior\][^\n]*\n- Forum: \[Force widget update\]/);
 });
 
 test('formats other origins, pulls and discussions with links', () => {

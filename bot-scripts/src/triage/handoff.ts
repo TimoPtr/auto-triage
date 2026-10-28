@@ -11,6 +11,9 @@ const SCHEMA_PATH = fileURLToPath(new URL('../../../schemas/handoff.json', impor
 
 export interface ExcerptOutcome { state: string | null; reason: string | null; fixedBy: string[]; solved: boolean | null }
 
+/** The reason shown for a pull request that was closed without being merged. */
+export const NOT_MERGED = 'not merged';
+
 export interface Excerpt {
   id: number;
   source: string;
@@ -50,7 +53,7 @@ function outcomeOf(result: RetrievalResult, fixedBy: string[]): ExcerptOutcome |
   const text = (key: string): string | null => (typeof outcome[key] === 'string' ? (outcome[key] as string) : null);
   switch (result.source) {
     case 'issue': return { state: text('state'), reason: text('stateReason'), fixedBy, solved: null };
-    case 'pull': return { state: text('state'), reason: null, fixedBy: [], solved: null };
+    case 'pull': return { state: text('state'), reason: text('state') === 'closed' ? NOT_MERGED : null, fixedBy: [], solved: null };
     case 'forum': return { state: null, reason: null, fixedBy: [], solved: typeof outcome.solved === 'boolean' ? outcome.solved : null };
     default: return null;
   }

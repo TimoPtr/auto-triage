@@ -100,18 +100,22 @@ function visible(excerpt: Excerpt, developerTopic: boolean): boolean {
   return true;
 }
 
-function section(heading: string, ids: number[], handoff: Handoff, developerTopic: boolean): string | null {
+function section(heading: string, ids: number[], handoff: Handoff, developerTopic: boolean, order: (a: Excerpt, b: Excerpt) => number = () => 0): string | null {
   const byId = new Map(handoff.excerpts.map((e) => [e.id, e]));
-  const lines = ids.map((id) => byId.get(id)).filter((e): e is Excerpt => e !== undefined && visible(e, developerTopic)).map((e) => excerptLine(e, handoff.repository));
+  const excerpts = ids.map((id) => byId.get(id)).filter((e): e is Excerpt => e !== undefined && visible(e, developerTopic));
+  const lines = excerpts.sort(order).map((e) => excerptLine(e, handoff.repository));
   return lines.length ? [heading, ...lines].join('\n') : null;
 }
+
+/** Duplicates are listed oldest first so the original report comes before later copies. */
+const OLDEST_FIRST = (a: Excerpt, b: Excerpt): number => a.date.localeCompare(b.date);
 
 /** The comment for a tier, or null when the tier is low or nothing visible remains. */
 export function renderComment({ handoff, verdict, tier, runId }: { handoff: Handoff; verdict: Verdict; tier: Tier; runId: string }): string | null {
   if (tier === 'low') return null;
   const developerTopic = DEVELOPER_TOPIC.test(`${handoff.issue.title}\n${handoff.issue.body}`);
   const blocks = [
-    section(DUPLICATES_HEADING, verdict.duplicates, handoff, developerTopic),
+    section(DUPLICATES_HEADING, verdict.duplicates, handoff, developerTopic, OLDEST_FIRST),
     section(RELATED_HEADING, verdict.related, handoff, developerTopic),
     tier === 'high' && verdict.answer ? sanitizeAnswer(verdict.answer) || null : null,
   ].filter((b): b is string => b !== null);

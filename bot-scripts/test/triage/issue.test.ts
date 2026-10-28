@@ -17,6 +17,12 @@ test('reads an issue through the client', async () => {
   assert.equal(issue.state, 'open');
   assert.equal(issue.createdAt, fixture.created_at);
   assert.deepEqual(issue.labels, fixture.labels.map((l: { name: string }) => l.name));
+  assert.equal(issue.subIssues, 0);
+});
+
+test('counts the sub-issues of a parent issue', async () => {
+  const client = { async getJson() { return { ...fixture, sub_issues_summary: { total: 3, completed: 1, percent_completed: 33 } }; } };
+  assert.equal((await fetchIssue(client, 'o/r', 7654)).subIssues, 3);
 });
 
 test('marks pull requests and bots and tolerates a missing body', async () => {
