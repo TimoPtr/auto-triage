@@ -43,6 +43,10 @@ const onlineFetch = async (url, init) => {
   if (p === '/graphql') {
     const query = JSON.parse(String(init?.body ?? '{}')).query ?? '';
     if (query.includes('discussionCategories')) return Response.json({ data: { repository: { discussionCategories: { nodes: [{ id: 'C1', slug: 'general' }] } } } });
+    if (query.includes('closingIssuesReferences')) {
+      const repository = Object.fromEntries(Array.from(query.matchAll(/\b(p(\d+)):\s*pullRequest\(/g), ([, alias, number]) => [alias, { closingIssuesReferences: { nodes: number === '40' ? [{ number: 12 }, { number: 30 }] : [] } }]));
+      return Response.json({ data: { repository }, errors: [] });
+    }
     return Response.json({ data: { repository: { discussions: { pageInfo: { hasNextPage: false, endCursor: null }, nodes: [discussion] } } } });
   }
   return new Response('nope', { status: 404 });

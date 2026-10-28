@@ -6,6 +6,8 @@ import { toFtsQuery } from './fts.ts';
 import { fuse, type RankedList } from './rrf.ts';
 import type { Embedder } from '../embed/embedder.ts';
 
+/** Chunk kinds that never become candidates unless asked for: review threads are code talk, not symptoms. */
+export const DEFAULT_EXCLUDED_KINDS: readonly string[] = ['review'];
 /** Sources whose entries age; docs and code never decay. */
 const DATED_SOURCES = new Set(['issue', 'pull', 'discussion', 'forum']);
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -43,6 +45,8 @@ export interface RetrieveOptions {
   decayFactor?: number;
   asOf?: string;
   excludeItemId?: number;
+  /** Chunk kinds left out of both candidate lists; `DEFAULT_EXCLUDED_KINDS` unless given. */
+  excludeKinds?: readonly string[];
   liveLists?: RankedList[];
   now?: Date;
 }
@@ -54,11 +58,12 @@ interface ChunkRow {
   source: string; provider: string; origin: string; source_id: string; url: string; title: string; audience: string; outcome: string | null;
 }
 
-function filters({ asOf, excludeItemId }: RetrieveOptions): { where: string; params: (string | number)[] } {
+function filters({ asOf, excludeItemId, excludeKinds = DEFAULT_EXCLUDED_KINDS }: RetrieveOptions): { where: string; params: (string | number)[] } {
   const clauses: string[] = [];
   const params: (string | number)[] = [];
   if (asOf) { clauses.push('c.created_at < ?'); params.push(asOf); }
   if (excludeItemId !== undefined) { clauses.push('c.item_id != ?'); params.push(excludeItemId); }
+  if (excludeKinds.length) { clauses.push(`c.kind NOT IN (${excludeKinds.map(() => '?').join(',')})`); params.push(...excludeKinds); }
   return { where: clauses.length ? `AND ${clauses.join(' AND ')}` : '', params };
 }
 
@@ -101,6 +106,7 @@ export function prepareQuestion(question: string): { embedText: string; lexicalT
 /**
  * Hybrid retrieval: vector KNN and FTS5 fused with reciprocal rank fusion,
  * weighted per source, decayed by age, collapsed to the best chunk per item.
+ * Review chunks stay out unless `excludeKinds` says otherwise.
  */
 export async function retrieve(db: DatabaseSync, embedder: Embedder, question: string, options: RetrieveOptions = {}): Promise<RetrievalResults> {
   const { k = 8, candidates = 50, minSimilarity = 0, sourceWeights = {}, decayAfterDays = 730, decayFactor = 0.7, liveLists = [], now = new Date() } = options;

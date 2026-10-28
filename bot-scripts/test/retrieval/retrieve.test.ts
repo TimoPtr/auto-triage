@@ -34,8 +34,25 @@ test.before(async () => {
     yield item('3', 'issue', 'Old widget bug', 'Widget stops on old phones', '2021-01-01T00:00:00Z');
     yield item('widgets', 'docs', 'Android Widgets', 'Widgets refresh on tap', '1970-01-01T00:00:00Z', { heading: 'Refresh' });
     yield item('4', 'issue', 'Future widget issue', 'Widget stops updating', '2026-01-01T00:00:00Z');
+    yield {
+      ...item('50', 'pull', 'Re-register widgets after boot', 'Re-register widgets after boot', '2025-05-01T00:00:00Z'),
+      chunks: [
+        { seq: 0, kind: 'body', heading: null, anchor: null, text: 'Re-register widgets after boot', logs: null, createdAt: '2025-05-01T00:00:00Z', authorRole: 'reporter' },
+        { seq: 1, kind: 'review', heading: 'Widget.kt:12', anchor: null, text: 'Widget.kt:12\nWhy not schedule the notification sound through WorkManager?', logs: null, createdAt: '2025-05-02T00:00:00Z', authorRole: 'maintainer' },
+      ],
+    } as IndexItem;
   }
   await writeIndex({ items: items(), embedder, outPath: indexPath, meta: {} });
+});
+
+test('review chunks are no candidates unless asked for', async () => {
+  const db = openDatabase(indexPath, { readOnly: true });
+  const silent = await retrieve(db, embedder, 'notification sound through WorkManager', { k: 5, minSimilarity: 0.3 });
+  const asked = await retrieve(db, embedder, 'notification sound through WorkManager', { k: 5, minSimilarity: 0.3, excludeKinds: [] });
+  db.close();
+  assert.ok(silent.every((r) => r.source !== 'pull'), 'the pull request only matches through its review chunk');
+  const pull = asked.find((r) => r.source === 'pull');
+  assert.ok(pull && pull.heading === 'Widget.kt:12');
 });
 
 test('ranks dense and lexical matches and reports scores', async () => {

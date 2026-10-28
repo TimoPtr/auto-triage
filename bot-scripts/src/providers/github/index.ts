@@ -14,10 +14,11 @@ export interface GithubProviderDeps {
   checkouts: Record<string, string>;
   now: Date;
   raw?: RawStore;
+  log?: (line: string) => void;
 }
 
 /** One provider for every repository under `providers.github`, sources in a fixed order per repository. */
-export function createGithubProvider(repos: Record<string, GithubRepoConfig>, { client, checkouts, now, raw }: GithubProviderDeps): Provider {
+export function createGithubProvider(repos: Record<string, GithubRepoConfig>, { client, checkouts, now, raw, log }: GithubProviderDeps): Provider {
   const checkoutOf = (repo: string, what: string) => {
     const path = checkouts[repo];
     if (!path) throw new Error(`No checkout for ${repo} (needed for ${what}); pass --checkout ${repo}=<path>`);
@@ -28,7 +29,7 @@ export function createGithubProvider(repos: Record<string, GithubRepoConfig>, { 
     async *items({ since }: ReadWindow = {}) {
       for (const [repo, c] of Object.entries(repos)) {
         if (c.issues) yield* readIssues({ client, repo, options: c.issues, now, raw, since });
-        if (c.pulls) yield* readPulls({ client, repo, options: c.pulls, now, raw, since });
+        if (c.pulls) yield* readPulls({ client, repo, options: c.pulls, now, raw, since, log });
         if (c.discussions) yield* readDiscussions({ client, repo, options: c.discussions, raw, since });
         if (c.releases) yield* readReleases({ client, repo, options: c.releases, now, raw, since });
         if (c.docs) yield* readDocs({ repo, checkoutPath: checkoutOf(repo, 'docs'), options: c.docs });

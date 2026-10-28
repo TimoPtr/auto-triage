@@ -14,8 +14,20 @@ const files = read('pull-40-files.json');
 const tmp = mkdtempSync(join(tmpdir(), 'kb-pulls-'));
 test.after(() => rmSync(tmp, { recursive: true, force: true }));
 
-function fakeClient(log = []) {
+/** Closing references GitHub records per pull request in the fake; 40 also claims #9 in its body, 30 is a sidebar-only link. */
+const closing = { p40: [12, 30], p41: [], p42: [] };
+function fakeClient(log = [], { failing = [] } = {}) {
   return {
+    async graphqlPartial(query, variables): Promise<any> {
+      log.push({ path: '/graphql', query, variables });
+      const repository = {};
+      const errors = [];
+      for (const [, alias] of query.matchAll(/\b(p\d+):\s*pullRequest\(/g)) {
+        if (failing.includes(alias)) { repository[alias] = null; errors.push({ message: 'Could not resolve to a node', path: ['repository', alias] }); continue; }
+        repository[alias] = { closingIssuesReferences: { nodes: (closing[alias] ?? []).map((number) => ({ number })) } };
+      }
+      return { data: { repository }, errors };
+    },
     async *paginate(path, params) {
       log.push({ path, params });
       if (path === '/repos/o/r/pulls') yield* params.direction === 'desc' ? [...page].reverse() : page;
@@ -37,7 +49,7 @@ test('yields a merged pull request with body, linked issues, files and the maint
   const pr = (await collect()).find((i) => i.sourceId === '40');
   assert.equal(pr.source, 'pull');
   assert.equal(pr.outcome.state, 'merged');
-  assert.deepEqual(pr.outcome.linkedIssues, [12, 9]);
+  assert.deepEqual(pr.outcome.linkedIssues, [12, 30, 9], 'the closing references first, then what the body claims, each once');
   assert.deepEqual(pr.outcome.files, ['app/src/main/kotlin/Widget.kt', 'CHANGELOG.md']);
   assert.equal(pr.chunks[0].kind, 'body');
   assert.ok(pr.chunks[0].text.startsWith('Re-register widgets after boot'));
@@ -56,13 +68,40 @@ test('a review comment on an absurdly long path still yields bounded chunks', as
     { id: 1, in_reply_to_id: null, path: longPath, line: 1, user: { login: 'someone' }, author_association: 'NONE', created_at: '2025-03-02T11:00:00Z', body: 'q' },
     { id: 2, in_reply_to_id: 1, path: longPath, line: 1, user: { login: 'm' }, author_association: 'MEMBER', created_at: '2025-03-02T12:00:00Z', body: 'a' },
   ];
-  const client = { async *paginate(path) { if (path === '/repos/o/r/pulls') yield* page; else if (path.endsWith('/40/comments')) yield* comments; else yield* []; } };
+  const client = { ...fakeClient(), async *paginate(path) { if (path === '/repos/o/r/pulls') yield* page; else if (path.endsWith('/40/comments')) yield* comments; else yield* []; } };
   const out = [];
   for await (const i of readPulls({ client, repo: 'o/r', options, now })) out.push(i);
   const pr = out.find((i) => i.sourceId === '40');
   const reviews = pr.chunks.filter((c) => c.kind === 'review');
   assert.equal(reviews.length, 2);
   assert.ok(reviews.every((c) => c.text.length <= 2000));
+});
+
+test('reads the closing references of a listing in one request per batch', async () => {
+  const log = [];
+  await collect(options, log);
+  const graphql = log.filter((c) => c.path === '/graphql');
+  assert.equal(graphql.length, 1);
+  assert.deepEqual(graphql[0].variables, { owner: 'o', name: 'r' });
+  assert.ok(graphql[0].query.includes('p40: pullRequest(number: 40)') && graphql[0].query.includes('p42: pullRequest(number: 42)'));
+  assert.ok(!graphql[0].query.includes('p41'), 'a pull request the filter drops is not asked for');
+});
+
+test('a pull request the API cannot resolve keeps the links of its body and is asked again next pass', async () => {
+  const raw = openRawStore(join(tmp, 'raw-unresolved.sqlite'));
+  const lines = [];
+  const out = [];
+  for await (const i of readPulls({ client: fakeClient([], { failing: ['p40'] }), repo: 'o/r', options, now, raw, log: (l) => lines.push(l) })) out.push(i);
+  assert.deepEqual(out.find((i) => i.sourceId === '40').outcome.linkedIssues, [12, 9]);
+  assert.ok(lines.some((l) => l.includes('Could not resolve')) && lines.some((l) => l.includes('no data for pull request 40')));
+  assert.equal(raw.get<any>('github', 'o/r', 'pull', '40').payload.closingIssues, undefined);
+  assert.deepEqual(raw.get<any>('github', 'o/r', 'pull', '42').payload.closingIssues, []);
+  const log = [];
+  const pr = (await collect(options, log, raw)).find((i) => i.sourceId === '40');
+  assert.deepEqual(pr.outcome.linkedIssues, [12, 30, 9]);
+  assert.ok(log.filter((c) => c.path === '/graphql').every((c) => c.query.includes('p40') && !c.query.includes('p42')), 'only the unresolved one is asked again');
+  assert.ok(log.every((c) => !c.path.endsWith('/comments')), 'the stored reviews are reused');
+  raw.close();
 });
 
 test('skips bot pull requests by default', async () => {
@@ -101,6 +140,21 @@ test('records the pull request in the raw store', async () => {
   assert.equal(record.payload.pull.number, 40);
   assert.equal(record.payload.files.length, 2);
   assert.equal(record.payload.reviewComments.length, 3);
+  assert.deepEqual(record.payload.closingIssues, [12, 30]);
+  raw.close();
+});
+
+test('a record stored before closing references were read gets them without refetching reviews', async () => {
+  const raw = openRawStore(join(tmp, 'raw-upgrade.sqlite'));
+  await collect(options, [], raw);
+  const record = raw.get<any>('github', 'o/r', 'pull', '40');
+  delete record.payload.closingIssues;
+  raw.put(record);
+  const log = [];
+  const pr = (await collect(options, log, raw)).find((i) => i.sourceId === '40');
+  assert.deepEqual(pr.outcome.linkedIssues, [12, 30, 9]);
+  assert.ok(log.every((c) => !c.path.endsWith('/comments') && !c.path.endsWith('/files')));
+  assert.deepEqual(raw.get<any>('github', 'o/r', 'pull', '40').payload.closingIssues, [12, 30]);
   raw.close();
 });
 
@@ -109,7 +163,7 @@ test('reuses stored review comments and files when the pull request has not chan
   await collect(options, [], raw);
   const log = [];
   const items = await collect(options, log, raw);
-  assert.ok(log.every((c) => !c.path.endsWith('/comments') && !c.path.endsWith('/files')));
+  assert.ok(log.every((c) => !c.path.endsWith('/comments') && !c.path.endsWith('/files') && c.path !== '/graphql'));
   const pr = items.find((i) => i.sourceId === '40');
   assert.equal(pr.chunks.filter((c) => c.kind === 'review').length, 2);
   assert.deepEqual(pr.outcome.files, ['app/src/main/kotlin/Widget.kt', 'CHANGELOG.md']);
@@ -125,16 +179,17 @@ test('a pass without reviews does not hide them from a later pass with reviews o
   raw.close();
 });
 
-test('readPull fetches one merged pull request with its review threads', async () => {
+test('readPull fetches one merged pull request with its review threads and closing references', async () => {
   const pr = await readPull({ client: fakeClient(), repo: 'o/r', number: 40, options, now });
   assert.equal(pr.outcome.state, 'merged');
   assert.equal(pr.chunks.filter((c) => c.kind === 'review').length, 2);
+  assert.deepEqual(pr.outcome.linkedIssues, [12, 30, 9]);
 });
 
 test('readPull returns null for a bot author, an unwanted state or an open pull request', async () => {
   assert.equal(await readPull({ client: fakeClient(), repo: 'o/r', number: 41, options, now }), null);
   assert.equal(await readPull({ client: fakeClient(), repo: 'o/r', number: 42, options: { ...options, states: ['merged'] }, now }), null);
-  const open = { async getJson() { return { ...page[0], state: 'open', merged_at: null, closed_at: null }; }, async *paginate() { yield* []; } };
+  const open = { async getJson() { return { ...page[0], state: 'open', merged_at: null, closed_at: null }; }, async *paginate() { yield* []; }, async graphqlPartial() { throw new Error('not asked'); } };
   assert.equal(await readPull({ client: open, repo: 'o/r', number: 40, options, now }), null);
 });
 
@@ -143,7 +198,7 @@ test('since lists newest first and stops at the first older pull request', async
   const items = await collect(options, log, undefined, new Date('2025-03-05T00:00:00Z'));
   assert.equal(log[0].params.direction, 'desc');
   assert.deepEqual(items.filter((i) => !i.remove).map((i) => i.sourceId), ['42']);
-  assert.ok(log.every((c) => !c.path.endsWith('/40/comments')), 'pull 40 is older than since and stops the listing before its details are fetched');
+  assert.ok(log.every((c) => !c.path.endsWith('/40/comments') && !(c.path === '/graphql' && c.query.includes('p40'))), 'pull 40 is older than since and stops the listing before its details are fetched');
 });
 
 test('a bot pull request listed after since is a removal', async () => {

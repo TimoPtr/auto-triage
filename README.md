@@ -141,7 +141,7 @@ SQLite file (FTS5 plus sqlite-vec) that `sqlite3` can open directly.
 Under `providers.github.<owner/repo>`:
 
 - `issues`: open and closed issues with their comments; the author role of every chunk comes from the API association, never from the text.
-- `pulls`: closed pull requests, merged or not, with the review threads that have a maintainer reply (one chunk per comment with its own role), the linked issues and the files touched; bot authors are skipped by default.
+- `pulls`: closed pull requests, merged or not, with the review threads that have a maintainer reply (one chunk per comment with its own role), the issues they close (GitHub's closing references, read through GraphQL, plus closing keywords in the body) and the files touched; bot authors are skipped by default. Review chunks are indexed but never retrieved unless asked for (`--with-reviews` on the query CLI), since they talk about code rather than symptoms.
 - `discussions`: the discussions of the named categories with their accepted answer, read through GraphQL.
 - `releases`: published release notes chunked by section; prereleases are opt-in.
 - `docs`: a markdown tree with front matter, linked by slug or id when they stay on the docs site.

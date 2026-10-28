@@ -22,6 +22,7 @@ const embedder = { modelKey: 'fake@1@q8@cls', dimensions: 4, async embed(t) { re
 const client = {
   async getJson(path) { const n = Number(path.split('/').pop()); return path.includes('/pulls/') ? pulls.find((p) => p.number === n) : issues.find((i) => i.number === n); },
   async *paginate() { yield* []; },
+  async graphqlPartial(query: string): Promise<any> { return { data: { repository: Object.fromEntries(Array.from(query.matchAll(/\b(p\d+):/g), ([, alias]) => [alias, { closingIssuesReferences: { nodes: [{ number: 12 }] } }])) }, errors: [] }; },
 };
 const seed: IndexItem = { source: 'issue', provider: 'github', origin: repo, sourceId: '12', url: 'https://x/12', title: 'Old title', audience: 'user', createdAt: '2025-03-01T00:00:00Z', updatedAt: null, outcome: null, extra: null, chunks: [{ seq: 0, kind: 'body', text: 'old text', logs: null, createdAt: '2025-03-01T00:00:00Z' }] };
 async function freshIndex(name: string) { const path = join(tmp, name); async function* items() { yield seed; } await writeIndex({ items: items(), embedder, outPath: path, meta: {} }); return path; }

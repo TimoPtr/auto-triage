@@ -54,7 +54,7 @@ const raw = values.raw ? openRawStore(values.raw, { recreateOnMismatch: true, lo
 const hosts = Object.fromEntries(Object.entries(config.providers.discourse ?? {}).map(([host, site]) => [host, site.categories]));
 const providers = values.offline && raw
   ? createProviders(config, { fetchImpl: createReplayFetch(raw, { hosts }), checkouts, raw, offline: true })
-  : createProviders(config, { githubToken: process.env.GITHUB_TOKEN, checkouts, raw });
+  : createProviders(config, { githubToken: process.env.GITHUB_TOKEN, checkouts, raw, log });
 
 try {
   const plan = planBuild({ previousMeta: previousMeta(values.previous, config), configHash, now: new Date(), full: values.full, offline: values.offline });

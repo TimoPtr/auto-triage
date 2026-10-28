@@ -15,7 +15,7 @@ export interface ReplayOptions {
 }
 
 interface StoredIssue { issue: { state: string; updated_at: string }; comments: unknown[] }
-interface StoredPull { pull: unknown; reviewComments: unknown[]; files: string[] }
+interface StoredPull { pull: unknown; reviewComments: unknown[]; files: string[]; closingIssues?: number[] }
 interface DiscussionNode { category: { slug: string } }
 interface StoredTopic { listed: { last_posted_at: string }; topic: unknown; category?: { id: number; slug: string } }
 interface SiteCategory { id: number; slug: string }
@@ -41,10 +41,21 @@ function githubDetails(raw: RawStore, repo: string, kind: string, number: string
   return json(what === 'files' ? pull.files.map((filename) => ({ filename })) : pull.reviewComments);
 }
 
-/** The two discussion queries: categories as the stored slugs (ids equal the slugs) and pages of nodes. */
+/** The closing references of the aliased pull requests, as stored; a pull request never stored answers with none. */
+function closingIssues(raw: RawStore, repo: string, query: string): Response {
+  const repository: Record<string, { closingIssuesReferences: { nodes: { number: number }[] } }> = {};
+  for (const [, alias, number] of query.matchAll(/\b(p(\d+)):\s*pullRequest\(/g)) {
+    const stored = raw.get<StoredPull>('github', repo, 'pull', number)?.payload.closingIssues ?? [];
+    repository[alias] = { closingIssuesReferences: { nodes: stored.map((n) => ({ number: n })) } };
+  }
+  return json({ data: { repository }, errors: [] });
+}
+
+/** The discussion queries (categories as the stored slugs, pages of nodes) and the closing references of pull requests. */
 function graphql(raw: RawStore, body: string): Response {
   const { query, variables } = JSON.parse(body) as { query: string; variables: Record<string, unknown> };
   const repo = `${variables.owner}/${variables.name}`;
+  if (query.includes('closingIssuesReferences')) return closingIssues(raw, repo, query);
   const nodes = Array.from(raw.each<DiscussionNode>('github', repo, 'discussion'), (r) => r.payload);
   if (query.includes('discussionCategories')) {
     const slugs = Array.from(new Set(nodes.map((n) => n.category.slug)));

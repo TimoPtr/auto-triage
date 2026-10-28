@@ -39,12 +39,13 @@ if (import.meta.url === pathToFileURL(process.argv[1] ?? '').href) {
       json: { type: 'boolean', default: false },
       'model-cache': { type: 'string', default: '.model-cache' },
       'live-forum': { type: 'string' },
+      'with-reviews': { type: 'boolean', default: false },
     },
   });
   const question = positionals.join(' ').trim();
   const k = Number(values.k);
   if (!values.config || !values.index || !question || !Number.isInteger(k) || k <= 0) {
-    console.error('usage: query --config <knowledge-bot.yaml> --index <knowledge.sqlite> [--k 8] [--as-of <iso>] [--live-forum <host>/<category-slug>] [--json] "<question>"');
+    console.error('usage: query --config <knowledge-bot.yaml> --index <knowledge.sqlite> [--k 8] [--as-of <iso>] [--live-forum <host>/<category-slug>] [--with-reviews] [--json] "<question>"');
     process.exit(2);
   }
   try {
@@ -60,7 +61,7 @@ if (import.meta.url === pathToFileURL(process.argv[1] ?? '').href) {
         const categorySlug = values['live-forum'].slice(separator + 1);
         liveLists.push(await liveForumList(db, { host, categorySlug, question, log: (line) => console.error(line) }));
       }
-      const results = await retrieve(db, embedder, question, { k, asOf: values['as-of'], minSimilarity: config.triage?.minSimilarity, liveLists });
+      const results = await retrieve(db, embedder, question, { k, asOf: values['as-of'], minSimilarity: config.triage?.minSimilarity, liveLists, ...(values['with-reviews'] ? { excludeKinds: [] } : {}) });
       console.log(formatResults(results, { json: values.json }));
     } finally {
       db.close();
