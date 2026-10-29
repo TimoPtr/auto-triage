@@ -1,23 +1,39 @@
 {
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
   "description": "Dependency updates for the bot scripts and the hand-written workflows and composite actions; mirrors the home-assistant/android presets.",
-  "extends": ["config:best-practices"],
+  "extends": [
+    "config:best-practices"
+  ],
   "configMigration": true,
   "minimumReleaseAge": "3 days",
-  "ignorePaths": [".github/workflows/triage.lock.yml", ".github/aw/**"],
-  "lockFileMaintenance": { "enabled": true },
+  "ignorePaths": [
+    ".github/workflows/triage.lock.yml",
+    ".github/aw/**"
+  ],
+  "lockFileMaintenance": {
+    "enabled": true
+  },
   "packageRules": [
     {
       "description": "Embedding stack: a new version can change the vectors, so the release notes must tell consumers to rebuild the index.",
-      "matchPackageNames": ["@huggingface/transformers", "sqlite-vec"],
+      "matchPackageNames": [
+        "@huggingface/transformers",
+        "sqlite-vec"
+      ],
       "prBodyNotes": [
         "This package shapes the index. Build a local index with the branch and compare `run-eval` against the current one before merging, then say in the next release notes that consumers need a full index rebuild."
       ]
     },
     {
-      "description": "Node is pinned to the current LTS line until April 2028; a new line is a decision, not a dependency update.",
-      "matchManagers": ["nodenv"],
-      "matchUpdateTypes": ["major"],
+      "description": "Node stays on the 24 LTS line until April 2028 (decided 2026-10-15); a new line, in .node-version, the setup-node pins and the types, waits for approval on the dashboard.",
+      "matchDepNames": [
+        "node",
+        "@types/node"
+      ],
+      "matchUpdateTypes": [
+        "major"
+      ],
+      "groupName": "node major",
       "dependencyDashboardApproval": true
     }
   ]
