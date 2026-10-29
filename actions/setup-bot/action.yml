@@ -1,6 +1,6 @@
 ---
 name: Set up the knowledge bot scripts
-description: Installs bot-scripts next to this action with Node 24 and restores the embedding model cache. Later steps read the paths from the outputs.
+description: Installs bot-scripts next to this action with Node 26 and restores the embedding model cache. Later steps read the paths from the outputs.
 inputs:
   config:
     description: Consumer config path, hashed into the model cache key.
@@ -20,7 +20,7 @@ runs:
   steps:
     - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
       with:
-        node-version: 24
+        node-version: 26
     - id: locate
       shell: bash
       env:

@@ -3,9 +3,9 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "Knowledge index builder and retrieval for the Home Assistant triage bot. TypeScript run natively by Node 24 (type stripping); installed with npm ci --ignore-scripts --omit=dev by the composite actions.",
+  "description": "Knowledge index builder and retrieval for the Home Assistant triage bot. TypeScript run natively by Node 26 (type stripping); installed with npm ci --ignore-scripts --omit=dev by the composite actions.",
   "engines": {
-    "node": ">=24"
+    "node": ">=26"
   },
   "scripts": {
     "typecheck": "tsc -p tsconfig.json && tsc -p tsconfig.test.json",
@@ -27,7 +27,7 @@
     "yaml": "^2.8.0"
   },
   "devDependencies": {
-    "@types/node": "^24.19.2",
+    "@types/node": "^26.6.6",
     "typescript": "^5.9.3"
   }
 }
