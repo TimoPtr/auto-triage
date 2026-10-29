@@ -105,7 +105,7 @@ from `bot-scripts/package.json`, so the feedback digest can compare releases.
 To cut one: the tests and the lock check are green on `main`, bump `version` in
 `bot-scripts/package.json` in the last commit, then
 
-    git tag vX.Y.Z && git push origin main vX.Y.Z
+    git tag -a vX.Y.Z -m vX.Y.Z && git push origin vX.Y.Z   # tags are signed, so they must be annotated
     gh release create vX.Y.Z --generate-notes
 
 Say in the notes when the release forces a full index rebuild: a new embedding model, a chunk
@@ -132,6 +132,12 @@ schema change, or anything that enters the config hash makes the next nightly bu
     cd bot-scripts
     npm ci --ignore-scripts
     npm test          # tsc --noEmit on src (strict) and tests, then node --test
+
+Renovate (`renovate.json`, the android presets) keeps the npm packages and the action pins in the
+hand-written workflows and composite actions current; `triage.lock.yml` and `.github/aw/` are
+excluded because `gh aw compile` owns their pins. An update of the embedding stack carries a note
+in its pull request: check the eval on a rebuilt index first, and announce the rebuild in the
+release notes.
 
 ## Build and query an index locally
 
