@@ -376,7 +376,7 @@ Nightly rebuild, manual run, and a run on every push that touches the config:
 
     jobs:
       build:
-        uses: TimoPtr/auto-triage/.github/workflows/build-index.yml@main
+        uses: TimoPtr/auto-triage/.github/workflows/build-index.yml@<sha> # vX.Y.Z
         permissions:
           contents: read
           actions: read
@@ -401,7 +401,7 @@ Append on close, so a resolution is searchable shortly after the issue or pull r
 
     jobs:
       append:
-        uses: TimoPtr/auto-triage/.github/workflows/append-on-close.yml@main
+        uses: TimoPtr/auto-triage/.github/workflows/append-on-close.yml@<sha> # vX.Y.Z
         permissions:
           contents: read
           actions: read
@@ -492,7 +492,7 @@ it from a thin workflow that owns the triggers:
 
     jobs:
       triage:
-        uses: TimoPtr/auto-triage/.github/workflows/triage.lock.yml@main
+        uses: TimoPtr/auto-triage/.github/workflows/triage.lock.yml@<sha> # vX.Y.Z
         permissions:
           contents: read
           actions: read
