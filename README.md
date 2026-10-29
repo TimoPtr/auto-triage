@@ -114,7 +114,7 @@ schema change, or anything that enters the config hash makes the next nightly bu
 
 ## Layout
 
-- `bot-scripts/` TypeScript run natively by Node 24 (type stripping, no build step): providers, index
+- `bot-scripts/` TypeScript run natively by Node 26 (type stripping, no build step): providers, index
   writer, retrieval, CLIs. `npm ci --ignore-scripts --omit=dev` installs the runtime; `tsc --noEmit` is a
   dev-only check. Imports keep the `.ts` extension, and no syntax that needs transformation (enums,
   parameter properties, decorators) is used.
@@ -422,7 +422,7 @@ missing (`tracking: false` turns it off).
 
 What the pieces do:
 
-- `actions/setup-bot` installs `bot-scripts` with Node 24 and caches the embedding model.
+- `actions/setup-bot` installs `bot-scripts` with Node 26 and caches the embedding model.
 - `actions/restore-index` restores the index and the raw store from the Actions cache by key prefix
   (`<slug>-index-v<format>-`, `<slug>-raw-v<schema>-`), validates the index against the config,
   and falls back to the newest `<slug>-index` artifact produced by a default-branch run. Outputs:
