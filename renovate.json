@@ -25,7 +25,7 @@
       ]
     },
     {
-      "description": "Node stays on the 24 LTS line until April 2028 (decided 2026-10-15); a new line, in .node-version, the setup-node pins and the types, waits for approval on the dashboard.",
+      "description": "A new Node line is a decision, not a dependency update: .node-version, the setup-node pin and the types move together after approval on the dashboard.",
       "matchDepNames": [
         "node",
         "@types/node"
