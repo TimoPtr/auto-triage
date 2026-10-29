@@ -7,6 +7,7 @@ import { loadConfig } from '../config/load.ts';
 import { readHandoff, HandoffError } from '../triage/handoff.ts';
 import { readAgentOutput, parseVerdict, tierOf, demote, VerdictError } from '../triage/verdict.ts';
 import { renderComment } from '../triage/render.ts';
+import { botVersion } from '../triage/version.ts';
 import { triageSettings } from '../triage/settings.ts';
 import { writeOutputs } from './index-status.ts';
 import { appendSummary } from './summary.ts';
@@ -26,7 +27,7 @@ if (import.meta.url === pathToFileURL(process.argv[1] ?? '').href) {
     const rawTier = tierOf(verdict.confidence, handoff.thresholds);
     const demotion = handoff.retrieval.demote;
     const tier = demotion ? demote(rawTier) : rawTier;
-    const comment = renderComment({ handoff, verdict, tier, runId: values['run-id'] });
+    const comment = renderComment({ handoff, verdict, tier, runId: values['run-id'], version: botVersion() });
     const post = comment !== null && !staged;
     mkdirSync(values['out-dir'], { recursive: true });
     const commentPath = join(values['out-dir'], 'comment.md');

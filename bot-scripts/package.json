@@ -1,5 +1,6 @@
 {
-  "name": "@home-assistant/auto-triage-scripts",
+  "name": "auto-triage-scripts",
+  "version": "0.1.0",
   "private": true,
   "type": "module",
   "description": "Knowledge index builder and retrieval for the Home Assistant triage bot. TypeScript run natively by Node 24 (type stripping); installed with npm ci --ignore-scripts --omit=dev by the composite actions.",

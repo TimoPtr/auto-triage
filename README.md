@@ -15,7 +15,7 @@ Everything below is already in place for `home-assistant/android` and can be cop
    that indexes the repository's own issues and pull requests, its documentation from another
    repository and one forum category:
 
-       # Knowledge bot configuration. Schema: https://github.com/home-assistant/auto-triage/tree/main/schemas
+       # Knowledge bot configuration. Schema: https://github.com/TimoPtr/auto-triage/tree/main/schemas
        version: 1
 
        product:
@@ -86,8 +86,31 @@ Everything below is already in place for `home-assistant/android` and can be cop
    scores the test split, compares it with the previous night and keeps a tracking issue open on a
    regression ("Quality loop"). Without cases the build skips the eval with one log line.
 
-Until this repository moves to the `home-assistant` organization and tags `v1`, callers reference
-`@main`; after that, pin by SHA with a version comment, as the android callers note in a `TODO`.
+Callers pin a release by its commit SHA with the tag in a comment, the same way they pin any other
+action, so Renovate can propose the next release:
+
+    uses: TimoPtr/auto-triage/.github/workflows/triage.lock.yml@<sha> # vX.Y.Z
+
+A test bed may follow `@main` instead. The reusable workflows check this repository out at the
+ref the caller named, so one pin covers the workflows, the composite actions, the scripts and the
+compiled triage lock together ("Releases").
+
+## Releases
+
+Releases are semver tags on `main`. During `0.x` a change to the config schema, the handoff or the
+comment format bumps the minor version; anything else bumps the patch. Each bot comment starts
+with a hidden marker naming the release that produced it (`<!-- knowledge-bot vX.Y.Z ... -->`), read
+from `bot-scripts/package.json`, so the feedback digest can compare releases.
+
+To cut one: the tests and the lock check are green on `main`, bump `version` in
+`bot-scripts/package.json` in the last commit, then
+
+    git tag vX.Y.Z && git push origin main vX.Y.Z
+    gh release create vX.Y.Z --generate-notes
+
+Say in the notes when the release forces a full index rebuild: a new embedding model, a chunk
+schema change, or anything that enters the config hash makes the next nightly build start over
+("Build time"), and consumers with a large corpus should expect that run to take longer.
 
 ## Layout
 

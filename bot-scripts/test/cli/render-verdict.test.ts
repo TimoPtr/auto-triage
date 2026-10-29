@@ -28,7 +28,7 @@ test('renders the comment and asks to post it', () => {
   const r = run(configPath, agentOutput([{ type: 'post_triage_verdict', confidence: '80', duplicates: '0', answer: 'Reboot fixes it.' }]), 'live');
   assert.equal(r.status, 0, r.stderr);
   const comment = readFileSync(join(r.outDir, 'comment.md'), 'utf8');
-  assert.match(comment, /^<!-- knowledge-bot v1 run=77 tier=high issue=7612 -->/);
+  assert.match(comment, /^<!-- knowledge-bot v\d+\.\d+\.\d+ run=77 tier=high issue=7612 -->/);
   assert.match(r.outputs, /tier=high\npost=true\ncomment-path=.*comment\.md/);
   const verdict = JSON.parse(readFileSync(join(r.outDir, 'verdict.json'), 'utf8'));
   assert.equal(verdict.tier, 'high'); assert.equal(verdict.staged, false); assert.equal(verdict.posted, true);
@@ -40,7 +40,7 @@ test('writes the comment to the summary only in staged mode', () => {
   assert.equal(r.status, 0, r.stderr);
   assert.match(r.outputs, /tier=medium\npost=false/);
   assert.match(r.summary, /staged: the comment below was not posted/);
-  assert.match(r.summary, /<!-- knowledge-bot v1 run=77 tier=medium issue=7612 -->/);
+  assert.match(r.summary, /<!-- knowledge-bot v\d+\.\d+\.\d+ run=77 tier=medium issue=7612 -->/);
   const verdict = JSON.parse(readFileSync(join(r.outDir, 'verdict.json'), 'utf8'));
   assert.equal(verdict.staged, true); assert.equal(verdict.posted, false);
 });

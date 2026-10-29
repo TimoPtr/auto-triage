@@ -1,6 +1,6 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
-  "$id": "https://github.com/home-assistant/auto-triage/schemas/eval-case.json",
+  "$id": "https://github.com/TimoPtr/auto-triage/schemas/eval-case.json",
   "title": "Knowledge bot benchmark case",
   "description": "One line of a cases .jsonl file: a query, what the retrieval should rank for it, and where the label came from.",
   "type": "object",

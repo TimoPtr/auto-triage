@@ -22,8 +22,8 @@ const handoff: Handoff = {
 const verdict = (over: Partial<Verdict> = {}): Verdict => ({ confidence: 80, duplicates: [0], related: [1, 2], answer: 'Reboot fixes it.', component: null, notes: [], ...over });
 
 test('renders the high tier with both sections, the answer and the footer', () => {
-  const body = renderComment({ handoff, verdict: verdict(), tier: 'high', runId: '42' });
-  assert.equal(body.split('\n')[0], '<!-- knowledge-bot v1 run=42 tier=high issue=7612 -->');
+  const body = renderComment({ handoff, verdict: verdict(), tier: 'high', runId: '42', version: '0.1.0' });
+  assert.equal(body.split('\n')[0], '<!-- knowledge-bot v0.1.0 run=42 tier=high issue=7612 -->');
   assert.match(body, /\*\*Possibly related to earlier reports\*\*\n- #5610 Widget stops updating after reboot \(closed, fixed by #5644, Jan 2025\)\n/);
   assert.match(body, /\*\*Discussions and docs\*\*\n- Forum: \[Force widget update\]\(https:\/\/community\.example\/t\/9\) \(solved, Mar 2026\)\n- Docs: \[Widgets › Refresh behavior\]\(https:\/\/docs\.example\/widgets#refresh\)\n/);
   assert.match(body, /Reboot fixes it\.\n\n---\nWas this helpful\?/);
@@ -31,16 +31,16 @@ test('renders the high tier with both sections, the answer and the footer', () =
 });
 
 test('renders the medium tier without the answer and nothing for low', () => {
-  const medium = renderComment({ handoff, verdict: verdict(), tier: 'medium', runId: '42' });
+  const medium = renderComment({ handoff, verdict: verdict(), tier: 'medium', runId: '42', version: '0.1.0' });
   assert.ok(!medium.includes('Reboot fixes it.'));
   assert.match(medium, /tier=medium/);
-  assert.equal(renderComment({ handoff, verdict: verdict(), tier: 'low', runId: '42' }), null);
+  assert.equal(renderComment({ handoff, verdict: verdict(), tier: 'low', runId: '42', version: '0.1.0' }), null);
 });
 
 test('shows developer excerpts only when the issue talks about building and never maintainer ones', () => {
-  const plain = renderComment({ handoff, verdict: verdict({ duplicates: [], related: [3, 4, 2] }), tier: 'medium', runId: '1' });
+  const plain = renderComment({ handoff, verdict: verdict({ duplicates: [], related: [3, 4, 2] }), tier: 'medium', runId: '1', version: '0.1.0' });
   assert.ok(!plain.includes('Building the app')); assert.ok(!plain.includes('Widget.kt')); assert.ok(plain.includes('Refresh behavior'));
-  const dev = renderComment({ handoff: { ...handoff, issue: { ...handoff.issue, body: 'The Gradle build fails on minimal' } }, verdict: verdict({ duplicates: [], related: [3, 4] }), tier: 'medium', runId: '1' });
+  const dev = renderComment({ handoff: { ...handoff, issue: { ...handoff.issue, body: 'The Gradle build fails on minimal' } }, verdict: verdict({ duplicates: [], related: [3, 4] }), tier: 'medium', runId: '1', version: '0.1.0' });
   assert.ok(dev.includes('- Docs: [Building the app](https://dev.example/build)')); assert.ok(!dev.includes('Widget.kt'));
 });
 
@@ -70,7 +70,7 @@ test('shows the close month and the stable release that ships the fix', () => {
 });
 
 test('lists duplicates oldest first and keeps the related order', () => {
-  const body = renderComment({ handoff, verdict: verdict({ duplicates: [8, 0], related: [2, 1], answer: null }), tier: 'medium', runId: '1' });
+  const body = renderComment({ handoff, verdict: verdict({ duplicates: [8, 0], related: [2, 1], answer: null }), tier: 'medium', runId: '1', version: '0.1.0' });
   assert.match(body, /earlier reports\*\*\n- #5610 Widget stops updating after reboot \(closed, fixed by #5644, Jan 2025\)\n- #7001 Widget frozen again \(open, May 2026\)\n/);
   assert.match(body, /docs\*\*\n- Docs: \[Widgets › Refresh behavior\][^\n]*\n- Forum: \[Force widget update\]/);
 });
@@ -85,15 +85,16 @@ test('formats other origins, pulls and discussions with links', () => {
 test('strips links, mentions and html from the answer', () => {
   assert.equal(sanitizeAnswer('See [docs](https://x) or https://y.example and ask @maintainer <b>now</b>'), 'See docs or and ask maintainer now');
   assert.equal(sanitizeAnswer('Line one\n\n\n\nLine two  '), 'Line one\n\nLine two');
-  const body = renderComment({ handoff, verdict: verdict({ answer: 'Ping @someone, see https://evil.example/x' }), tier: 'high', runId: '1' });
+  const body = renderComment({ handoff, verdict: verdict({ answer: 'Ping @someone, see https://evil.example/x' }), tier: 'high', runId: '1', version: '0.1.0' });
   assert.ok(!body.includes('@someone')); assert.ok(!body.includes('evil.example'));
 });
 
 test('returns null when nothing is visible and parses its own marker', () => {
-  assert.equal(renderComment({ handoff, verdict: verdict({ duplicates: [], related: [], answer: null }), tier: 'high', runId: '1' }), null);
-  assert.equal(renderComment({ handoff, verdict: verdict({ duplicates: [4], related: [], answer: null }), tier: 'high', runId: '1' }), null);
-  assert.ok(renderComment({ handoff, verdict: verdict({ duplicates: [], related: [], answer: 'Only an answer.' }), tier: 'high', runId: '1' }).includes('Only an answer.'));
-  assert.deepEqual(parseMarker(`${marker({ runId: '42', tier: 'medium', issue: 3 })}\nrest`), { runId: '42', tier: 'medium', issue: 3 });
+  assert.equal(renderComment({ handoff, verdict: verdict({ duplicates: [], related: [], answer: null }), tier: 'high', runId: '1', version: '0.1.0' }), null);
+  assert.equal(renderComment({ handoff, verdict: verdict({ duplicates: [4], related: [], answer: null }), tier: 'high', runId: '1', version: '0.1.0' }), null);
+  assert.ok(renderComment({ handoff, verdict: verdict({ duplicates: [], related: [], answer: 'Only an answer.' }), tier: 'high', runId: '1', version: '0.1.0' }).includes('Only an answer.'));
+  assert.deepEqual(parseMarker(`${marker({ version: '0.1.0', runId: '42', tier: 'medium', issue: 3 })}\nrest`), { version: '0.1.0', runId: '42', tier: 'medium', issue: 3 });
+  assert.deepEqual(parseMarker('<!-- knowledge-bot v1 run=7 tier=high issue=9 -->'), { version: '1', runId: '7', tier: 'high', issue: 9 });
   assert.equal(parseMarker('plain comment'), null);
 });
 

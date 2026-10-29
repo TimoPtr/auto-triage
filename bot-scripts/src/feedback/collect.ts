@@ -16,7 +16,7 @@ const BOT_LOGIN = /\[bot\]$/;
 export type ReplyRole = 'reporter' | 'maintainer' | 'user';
 export interface FeedbackOutcome { recheck: boolean; closedAt: string | null; stateReason: string | null; duplicateOf: number[]; hit: boolean; miss: boolean; answered: boolean; dismissed: boolean }
 export interface FeedbackReply { role: ReplyRole; at: string; text: string }
-export interface FeedbackComment { issue: number; runId: string; tier: string; commentId: number | null; commentAt: string; suggested: number[]; up: number; down: number; reply: FeedbackReply | null; outcome: FeedbackOutcome }
+export interface FeedbackComment { issue: number; version: string; runId: string; tier: string; commentId: number | null; commentAt: string; suggested: number[]; up: number; down: number; reply: FeedbackReply | null; outcome: FeedbackOutcome }
 export interface Suppressed { issue: number; reason: 'downvoted' | 'dismissed'; at: string }
 export interface Feedback { version: 1; repository: string; generatedAt: string; comments: FeedbackComment[]; suppressed: Suppressed[] }
 
@@ -110,7 +110,7 @@ export function collectFeedback({ raw, repository, now = new Date() }: { raw: Ra
       const up = comment.reactions?.['+1'] ?? 0;
       const down = comment.reactions?.['-1'] ?? 0;
       comments.push({
-        issue: stored.issue.number, runId: marker.runId, tier: marker.tier, commentId: comment.id ?? null, commentAt: comment.created_at, suggested, up, down,
+        issue: stored.issue.number, version: marker.version, runId: marker.runId, tier: marker.tier, commentId: comment.id ?? null, commentAt: comment.created_at, suggested, up, down,
         reply: replyOf(sorted, comment.created_at, stored.issue),
         outcome: outcomeOf(raw, repository, { ...stored, comments: sorted }, comment, suggested, down),
       });

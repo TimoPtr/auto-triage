@@ -94,7 +94,7 @@ test('recognises bot comments only by a leading marker', () => {
 });
 
 test('suppressedOf keeps one entry per issue, latest comment first', () => {
-  const base = { runId: '1', tier: 'high', commentId: null, suggested: [], up: 0, reply: null, outcome: { recheck: false, closedAt: null, stateReason: null, duplicateOf: [], hit: false, miss: false, answered: false, dismissed: false } };
+  const base = { version: '1', runId: '1', tier: 'high', commentId: null, suggested: [], up: 0, reply: null, outcome: { recheck: false, closedAt: null, stateReason: null, duplicateOf: [], hit: false, miss: false, answered: false, dismissed: false } };
   const list = suppressedOf([
     { ...base, issue: 3, commentAt: '2026-10-02T00:00:00Z', down: 1 },
     { ...base, issue: 3, commentAt: '2026-10-01T00:00:00Z', down: 0, outcome: { ...base.outcome, dismissed: true } },
@@ -131,7 +131,7 @@ test('falls through to maintainer comments when the links record is empty or sta
 });
 
 test('a clean latest comment lifts the suppression of an issue', () => {
-  const base = { runId: '1', tier: 'high', commentId: null, suggested: [], up: 0, reply: null, outcome: { recheck: false, closedAt: null, stateReason: null, duplicateOf: [], hit: false, miss: false, answered: false, dismissed: false } };
+  const base = { version: '1', runId: '1', tier: 'high', commentId: null, suggested: [], up: 0, reply: null, outcome: { recheck: false, closedAt: null, stateReason: null, duplicateOf: [], hit: false, miss: false, answered: false, dismissed: false } };
   const list = suppressedOf([
     { ...base, issue: 3, commentAt: '2026-10-02T00:00:00Z', down: 0 },
     { ...base, issue: 3, commentAt: '2026-10-01T00:00:00Z', down: 1 },

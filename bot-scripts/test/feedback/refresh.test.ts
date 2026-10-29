@@ -4,7 +4,7 @@ import { refreshReactions, FEEDBACK_WINDOW_DAYS } from '../../src/feedback/refre
 import type { Feedback, FeedbackComment } from '../../src/feedback/collect.ts';
 
 const outcome = { recheck: false, closedAt: null, stateReason: null, duplicateOf: [], hit: false, miss: false, answered: false, dismissed: false };
-const comment = (issue: number, commentId: number | null, commentAt: string): FeedbackComment => ({ issue, runId: '1', tier: 'high', commentId, commentAt, suggested: [], up: 0, down: 0, reply: null, outcome: { ...outcome } });
+const comment = (issue: number, commentId: number | null, commentAt: string): FeedbackComment => ({ issue, version: '1', runId: '1', tier: 'high', commentId, commentAt, suggested: [], up: 0, down: 0, reply: null, outcome: { ...outcome } });
 const now = new Date('2026-10-20T00:00:00Z');
 const feedback = (): Feedback => ({
   version: 1, repository: 'o/r', generatedAt: now.toISOString(), suppressed: [],

@@ -1,7 +1,7 @@
 ---
 # Knowledge bot triage, a reusable workflow: the consumer's knowledge-triage.yml owns the
 # triggers (issues opened or labeled, workflow_dispatch) and calls
-#   uses: home-assistant/auto-triage/.github/workflows/triage.lock.yml@<ref>
+#   uses: TimoPtr/auto-triage/.github/workflows/triage.lock.yml@<sha> # vX.Y.Z
 # with the inputs below. The lock file next to this one is compiled with `gh aw compile triage`
 # and checked for staleness by the test workflow; never edit it by hand.
 #

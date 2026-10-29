@@ -1,23 +1,24 @@
 import type { Excerpt, ExcerptOutcome, Handoff } from './handoff.ts';
 import type { Tier, Verdict } from './verdict.ts';
 
-export const MARKER_PREFIX = '<!-- knowledge-bot v1';
+export const MARKER_PREFIX = '<!-- knowledge-bot v';
 export const FOOTER = 'Was this helpful? React with 👍 or 👎 on this comment, or reply to say what was wrong.';
 /** Issues about building or contributing may see developer-audience excerpts. */
 export const DEVELOPER_TOPIC = /\b(build|building|builds|gradle|flavou?rs?|submit|submitting|pull request|contribut\w*)\b/i;
 const DUPLICATES_HEADING = '**Possibly related to earlier reports**';
 const RELATED_HEADING = '**Discussions and docs**';
-const MARKER = /^<!-- knowledge-bot v1 run=(\S+) tier=(\S+) issue=(\d+) -->/;
+const MARKER = /^<!-- knowledge-bot v(\S+) run=(\S+) tier=(\S+) issue=(\d+) -->/;
 const DOCS_EPOCH = '1970-01-01';
 
-export function marker({ runId, tier, issue }: { runId: string; tier: Tier; issue: number }): string {
-  return `${MARKER_PREFIX} run=${runId} tier=${tier} issue=${issue} -->`;
+/** The hidden first line of a bot comment: the release that produced it, the run, the tier and the issue. */
+export function marker({ version, runId, tier, issue }: { version: string; runId: string; tier: Tier; issue: number }): string {
+  return `${MARKER_PREFIX}${version} run=${runId} tier=${tier} issue=${issue} -->`;
 }
 
 /** The fields of a bot comment's marker, or null for any other comment. */
-export function parseMarker(body: string): { runId: string; tier: string; issue: number } | null {
+export function parseMarker(body: string): { version: string; runId: string; tier: string; issue: number } | null {
   const m = MARKER.exec(body);
-  return m ? { runId: m[1], tier: m[2], issue: Number(m[3]) } : null;
+  return m ? { version: m[1], runId: m[2], tier: m[3], issue: Number(m[4]) } : null;
 }
 
 const MARKDOWN_SPECIALS = /[\\`*_[\]()<>!|~]/g;
@@ -126,7 +127,7 @@ function section(heading: string, ids: number[], handoff: Handoff, developerTopi
 const OLDEST_FIRST = (a: Excerpt, b: Excerpt): number => a.date.localeCompare(b.date);
 
 /** The comment for a tier, or null when the tier is low or nothing visible remains. */
-export function renderComment({ handoff, verdict, tier, runId }: { handoff: Handoff; verdict: Verdict; tier: Tier; runId: string }): string | null {
+export function renderComment({ handoff, verdict, tier, runId, version }: { handoff: Handoff; verdict: Verdict; tier: Tier; runId: string; version: string }): string | null {
   if (tier === 'low') return null;
   const developerTopic = DEVELOPER_TOPIC.test(`${handoff.issue.title}\n${handoff.issue.body}`);
   const blocks = [
@@ -135,5 +136,5 @@ export function renderComment({ handoff, verdict, tier, runId }: { handoff: Hand
     tier === 'high' && verdict.answer ? sanitizeAnswer(verdict.answer) || null : null,
   ].filter((b): b is string => b !== null);
   if (blocks.length === 0) return null;
-  return [marker({ runId, tier, issue: handoff.issue.number }), '', ...blocks.flatMap((b) => [b, '']), '---', FOOTER, ''].join('\n');
+  return [marker({ version, runId, tier, issue: handoff.issue.number }), '', ...blocks.flatMap((b) => [b, '']), '---', FOOTER, ''].join('\n');
 }

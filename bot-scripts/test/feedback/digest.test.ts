@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { digestMarkdown, DIGEST_RECENT } from '../../src/feedback/digest.ts';
 import type { Feedback, FeedbackComment } from '../../src/feedback/collect.ts';
 
-const base = { runId: '1', commentId: 1, suggested: [], outcome: { recheck: false, closedAt: null, stateReason: null, duplicateOf: [], hit: false, miss: false, answered: false, dismissed: false } };
+const base = { version: '1', runId: '1', commentId: 1, suggested: [], outcome: { recheck: false, closedAt: null, stateReason: null, duplicateOf: [], hit: false, miss: false, answered: false, dismissed: false } };
 const c = (issue: number, tier: string, up: number, down: number, outcome: Partial<FeedbackComment['outcome']>, role: 'reporter' | 'maintainer' | 'user' | null, at: string): FeedbackComment =>
   ({ ...base, issue, tier, up, down, commentAt: at, reply: role ? { role, at, text: 'secret reply text' } : null, outcome: { ...base.outcome, ...outcome } });
 
