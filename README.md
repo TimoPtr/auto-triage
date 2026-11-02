@@ -486,12 +486,13 @@ it from a thin workflow that owns the triggers:
 
     permissions: {}
 
-    concurrency:
-      group: knowledge-triage-${{ github.event.issue.number || inputs.issue-number }}
-      cancel-in-progress: false
-
     jobs:
       triage:
+        # An issue created with a label fires opened and labeled at once; only ai-recheck starts a run.
+        if: github.event_name != 'issues' || github.event.action != 'labeled' || github.event.label.name == 'ai-recheck'
+        concurrency:
+          group: knowledge-triage-${{ github.event.issue.number || inputs.issue-number }}
+          cancel-in-progress: false
         uses: TimoPtr/auto-triage/.github/workflows/triage.lock.yml@<sha> # vX.Y.Z
         permissions:
           contents: read
@@ -513,7 +514,10 @@ caller or GitHub refuses the call at start-up (hence no reaction on the issue, a
 `pull-requests: read` for gh-aw's conclusion jobs); and `GH_AW_AGENT_OUTPUT` is read from the step's
 shell, not through `env.` in the same step. The Copilot engine runs on the workflow token with `copilot-requests: write`; no secret is
 added. A `labeled` event runs only for `ai-recheck` (removed again so it can be re-applied), a
-manual run passes `dispatch`. Who may trigger a run is the caller's choice of events; the template sets
+manual run passes `dispatch`. An issue created with a label fires `opened` and `labeled` at once, so the
+caller's `if` skips every other label before the call: a run that this workflow refused would still be
+created by the caller's trigger and wait in its concurrency group. The pre-activation check stays as
+the second line of defence. Who may trigger a run is the caller's choice of events; the template sets
 `roles: all` because gh-aw otherwise activates only for actors with write access and an outsider's
 issue would stop after pre-activation. Issues from anyone are triaged, so the issue text is treated as
 data everywhere.
