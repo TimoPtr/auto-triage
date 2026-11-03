@@ -88,7 +88,6 @@ export interface PeerConfig {
 export interface TriageConfig {
   minSimilarity?: number;
   confidence?: { answer?: number; links?: number };
-  recheckLabel?: string;
   nextSteps?: Record<string, string>;
   /** Write the triage comment to the run summary instead of the issue. */
   staged?: boolean;

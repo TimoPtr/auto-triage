@@ -17,14 +17,21 @@ mode="${3:-file}"
 base="$(basename "$dest")"
 
 read -r repo_id default_branch < <(gh api "repos/$GITHUB_REPOSITORY" | jq -r '"\(.id) \(.default_branch)"')
+# The listing is newest first and shared with the artifacts of pull request runs, which the filter
+# refuses, so the pages are read in order until one holds a usable artifact (at most 1000 artifacts).
 # gh api's --jq takes no jq arguments, so the filter runs in jq itself with the values bound as variables.
-id="$(gh api "repos/$GITHUB_REPOSITORY/actions/artifacts?name=$name&per_page=30" \
-  | jq -r --arg repo_id "$repo_id" --arg branch "$default_branch" \
-  '[.artifacts[] | select(.expired == false
-      and (.workflow_run.head_repository_id | tostring) == $repo_id
-      and (.workflow_run.repository_id | tostring) == $repo_id
-      and .workflow_run.head_branch == $branch)]
-   | sort_by(.created_at) | reverse | .[0].id // empty')"
+id=""
+for page in $(seq 1 10); do
+  listing="$(gh api "repos/$GITHUB_REPOSITORY/actions/artifacts?name=$name&per_page=100&page=$page")"
+  id="$(jq -r --arg repo_id "$repo_id" --arg branch "$default_branch" \
+    '[.artifacts[] | select(.expired == false
+        and (.workflow_run.head_repository_id | tostring) == $repo_id
+        and (.workflow_run.repository_id | tostring) == $repo_id
+        and .workflow_run.head_branch == $branch)]
+     | sort_by(.created_at) | reverse | .[0].id // empty' <<< "$listing")"
+  [ -n "$id" ] && break
+  [ "$(jq '.artifacts | length' <<< "$listing")" -lt 100 ] && break
+done
 if [ -z "$id" ]; then
   echo "0"
   exit 0
