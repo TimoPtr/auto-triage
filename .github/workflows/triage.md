@@ -124,7 +124,7 @@ on:
         node "$BOT_SCRIPTS_DIR/src/cli/prepare-triage.ts" --config "$CONFIG" --index "$INDEX" --index-status "$INDEX_STATUS" \
           --repo "$REPO" --issue-file /tmp/triage/issue.json --out /tmp/triage/handoff.json --feedback .knowledge-bot/feedback/feedback.json
     - if: steps.prepare.outputs.should-continue == 'true'
-      uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+      uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9  # v7.0.2
       with:
         name: triage-handoff
         path: /tmp/triage/handoff.json
@@ -159,7 +159,7 @@ runs-on-slim: ubuntu-latest
 
 # Agent job, before the agent: the handoff written by the pre-activation job.
 steps:
-  - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+  - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333  # v8.0.2
     with:
       name: triage-handoff
       path: /tmp/gh-aw/agent
@@ -220,7 +220,7 @@ safe-outputs:
             persist-credentials: false
         - id: bot
           uses: ./.knowledge-bot/auto-triage/actions/setup-bot
-        - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333  # v8.0.2
           with:
             name: triage-handoff
             path: /tmp/triage
