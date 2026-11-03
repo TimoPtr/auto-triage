@@ -546,7 +546,7 @@ What happens, in three jobs:
    (unknown ids are dropped with a note, an unparsable confidence fails the job), picks the tier
    (`high` from `triage.confidence.answer`, default 75; `medium` from `triage.confidence.links`,
    default 45; `low` below) and renders the comment: a marker
-   `<!-- knowledge-bot v1 run=<id> tier=<tier> issue=<n> -->`, "Possibly related to earlier
+   `<!-- knowledge-bot v<release> run=<id> tier=<tier> issue=<n> -->`, "Possibly related to earlier
    reports", "Discussions and docs", the answer on the high tier, and a feedback footer. Links come
    only from the handoff; titles are escaped and mentions removed; developer-audience excerpts
    appear only when the issue talks about building, maintainer-audience ones never (`component`

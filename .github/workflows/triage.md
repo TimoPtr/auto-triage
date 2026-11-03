@@ -234,7 +234,8 @@ safe-outputs:
             set -euo pipefail
             node "$BOT_SCRIPTS_DIR/src/cli/render-verdict.ts" --config "$CONFIG" --handoff /tmp/triage/handoff.json \
               --agent-output "$GH_AW_AGENT_OUTPUT" --out-dir /tmp/triage --run-id "$RUN_ID"
-        # Older bot comments are minimized as outdated, then the new one is posted. Only the triggering issue is written.
+        # Older bot comments (a Bot author and the marker prefix of any release) are minimized as outdated, then the new one is posted.
+        # Only the triggering issue is written.
         - id: post
           if: steps.render.outputs.post == 'true'
           env:
@@ -244,7 +245,7 @@ safe-outputs:
             COMMENT: ${{ steps.render.outputs.comment-path }}
           run: |
             set -euo pipefail
-            for id in $(gh api "repos/$REPO/issues/$ISSUE/comments" --paginate --jq '.[] | select(.body | startswith("<!-- knowledge-bot v1 ")) | .node_id'); do
+            for id in $(gh api "repos/$REPO/issues/$ISSUE/comments" --paginate --jq '.[] | select(.user.type == "Bot" and (.body | startswith("<!-- knowledge-bot v"))) | .node_id'); do
               gh api graphql -f query='mutation($id: ID!) { minimizeComment(input: {subjectId: $id, classifier: OUTDATED}) { minimizedComment { isMinimized } } }' -F id="$id" > /dev/null
             done
             gh api "repos/$REPO/issues/$ISSUE/comments" -F body=@"$COMMENT" --jq '.html_url'
