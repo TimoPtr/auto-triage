@@ -209,9 +209,13 @@ Measured on 2026-10-20 with the same setup, a full raw store and the previous in
 | Full rebuild (`--full`, or every 7 days) | every listing, every checkout; 24 chunks embedded, 41 433 reused | 3 min 16 s |
 | Incremental (the nightly default) | issues, pull requests, discussions, releases and forum topics changed since the previous build (none that morning), the checkouts in full; 0 chunks embedded, 6376 reused | 17 s |
 
-The Actions `GITHUB_TOKEN` only has 1000 requests per hour, so the first fill of a large consumer
-converges over a few nightly runs (see "Run it in GitHub Actions"); after that the nightly job is
-incremental and its cost follows the number of changed items, not the size of the repository.
+The Actions `GITHUB_TOKEN` has 1000 requests per hour on a personal repository and 15 000 on one
+that belongs to a GitHub Enterprise Cloud account; the client itself makes about two requests per
+second. The first fill of a large consumer therefore converges over a few runs (see "Run it in
+GitHub Actions"): each run keeps its fetched payloads and its embedded vectors in the raw store, so
+the next one resumes instead of starting over. Tighten the schedule for the fill if a day per run
+is too slow; runs of one slug queue behind each other. After that the nightly job is incremental
+and its cost follows the number of changed items, not the size of the repository.
 
 ### Raw store
 
@@ -221,6 +225,14 @@ ground truth (duplicate links, close reasons, `fixes #N`, docs links in maintain
 original material rather than from cleaned chunks, and a rebuild with the same store skips the
 comment, review and topic requests of items whose change marker (`updated_at`, `last_posted_at`)
 did not move.
+
+The raw store also holds the vector checkpoint of a full build: every batch of embedded chunks is
+written to its `vectors` table (keyed by chunk hash under the model that produced it) as the build
+runs, and a full build reads it for every chunk the previous index cannot supply. A build killed on
+the job budget, or ended by a provider that gave up, therefore keeps its embedding work along with
+its fetched payloads, and the next run only embeds what is new. A finished build prunes the table to
+the chunks its index holds; the vectors of another model are dropped with it. The table is created
+on open, so an older store needs no migration.
 
 With `--offline`, the build replays the raw store instead of the network: issues, pull requests,
 discussions, releases and forum topics come from the stored payloads, docs, code and files from the

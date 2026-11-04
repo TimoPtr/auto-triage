@@ -14,7 +14,7 @@ export interface DiscourseClientOptions {
   log?: (line: string) => void;
 }
 
-/** JSON client for one Discourse host: throttled, with a small retry on 429 and 5xx. */
+/** JSON client for one Discourse host: throttled, with a small retry on 429, 5xx and a failed request (a dropped socket). */
 export function createDiscourseClient({ host, fetchImpl = fetch, sleepImpl = sleep, nowImpl = Date.now, requestsPerSecond, log = () => {} }: DiscourseClientOptions): DiscourseClient {
   const interval = 1000 / requestsPerSecond;
   let nextSlot = 0;
@@ -29,11 +29,18 @@ export function createDiscourseClient({ host, fetchImpl = fetch, sleepImpl = sle
       const url = `https://${host}${path}`;
       for (let attempt = 0; ; attempt += 1) {
         await throttle();
-        const response = await fetchImpl(url, { headers: { accept: 'application/json', 'user-agent': 'home-assistant-auto-triage' } });
-        if (response.ok) return (await response.json()) as T;
-        const retryable = response.status === 429 || response.status >= 500;
-        if (!retryable || attempt >= BACKOFF_MS.length) throw new Error(`Discourse ${response.status} for ${url}`);
-        log(`Discourse ${response.status} for ${url}, retry ${attempt + 1}`);
+        let response: Response | null = null;
+        let failure: unknown = null;
+        try {
+          response = await fetchImpl(url, { headers: { accept: 'application/json', 'user-agent': 'home-assistant-auto-triage' } });
+        } catch (error) {
+          failure = error;
+        }
+        if (response?.ok) return (await response.json()) as T;
+        const retryable = response === null || response.status === 429 || response.status >= 500;
+        const reason = response ? String(response.status) : `request failed (${failure instanceof Error ? failure.message : String(failure)})`;
+        if (!retryable || attempt >= BACKOFF_MS.length) throw new Error(`Discourse ${reason} for ${url}`);
+        log(`Discourse ${reason} for ${url}, retry ${attempt + 1}`);
         await sleepImpl(BACKOFF_MS[attempt]);
       }
     },

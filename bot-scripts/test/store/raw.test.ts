@@ -21,6 +21,36 @@ test('stores a payload by key and replaces it on a second put', () => {
   store.close();
 });
 
+test('keeps vectors per model and prunes stale ones', () => {
+  const store = openRawStore(join(tmp, 'vectors.sqlite'));
+  store.putVectors('m1', [{ hash: 'a', embedding: Uint8Array.from([1, 2]) }, { hash: 'b', embedding: Uint8Array.from([3, 4]) }]);
+  store.putVectors('m2', [{ hash: 'a', embedding: Uint8Array.from([9, 9]) }]);
+  assert.deepEqual(Array.from(store.vector('m1', 'a')), [1, 2]);
+  assert.deepEqual(Array.from(store.vector('m2', 'a')), [9, 9]);
+  assert.equal(store.vector('m1', 'zz'), null);
+  store.putVectors('m1', [{ hash: 'a', embedding: Uint8Array.from([5, 6]) }]);
+  assert.deepEqual(Array.from(store.vector('m1', 'a')), [5, 6]);
+  assert.equal(store.pruneVectors('m1', new Set(['a'])), 2);
+  assert.deepEqual(Array.from(store.vector('m1', 'a')), [5, 6]);
+  assert.equal(store.vector('m1', 'b'), null);
+  assert.equal(store.vector('m2', 'a'), null);
+  assert.equal(store.count(), 0, 'vectors are not raw items');
+  store.close();
+});
+
+test('an older store without the vectors table gains it on open', () => {
+  const path = join(tmp, 'old-vectors.sqlite');
+  const db = new DatabaseSync(path);
+  db.exec(`CREATE TABLE raw_items (provider TEXT NOT NULL, origin TEXT NOT NULL, kind TEXT NOT NULL, id TEXT NOT NULL, updated_at TEXT, fetched_at TEXT NOT NULL, payload BLOB NOT NULL, PRIMARY KEY (provider, origin, kind, id));
+    CREATE TABLE meta (key TEXT PRIMARY KEY, value TEXT NOT NULL); INSERT INTO meta VALUES ('raw_schema_version', '1');`);
+  db.close();
+  const store = openRawStore(path);
+  assert.equal(store.vector('m', 'x'), null);
+  store.putVectors('m', [{ hash: 'x', embedding: Uint8Array.from([1]) }]);
+  assert.deepEqual(Array.from(store.vector('m', 'x')), [1]);
+  store.close();
+});
+
 test('iterates one kind of one origin and survives reopening', () => {
   const path = join(tmp, 'raw2.sqlite');
   let store = openRawStore(path);

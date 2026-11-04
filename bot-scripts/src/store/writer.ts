@@ -6,6 +6,7 @@ import { openDatabase, createSchema, readMeta, SCHEMA_VERSION } from './db.ts';
 import { quantizeInt8, toBlob } from './vectors.ts';
 import type { Embedder } from '../embed/embedder.ts';
 import { isRemoval, type IndexChunk, type IndexItem, type ProviderItem } from '../providers/types.ts';
+import type { VectorCheckpoint } from './raw.ts';
 
 const EMBED_BATCH = 256;
 
@@ -21,6 +22,12 @@ export interface WriteIndexInput {
   embedder: Embedder;
   outPath: string;
   previousPath?: string;
+  /**
+   * Where newly embedded vectors are kept as the build runs and read back when
+   * neither the previous index nor this build has them: a build killed on its
+   * time budget then resumes with its embedding work intact.
+   */
+  checkpoint?: VectorCheckpoint;
   meta?: Record<string, string>;
   log?: (line: string) => void;
   /** Clock for the once-a-minute embedding progress line. */
@@ -107,21 +114,29 @@ export function insertChunk(stmt: Statements, itemId: number | bigint, chunk: In
  * Builds a new index file from a stream of items. Writes to `<outPath>.tmp` and
  * renames on success, so a failure never destroys the previous index.
  */
-export async function writeIndex({ items, embedder, outPath, previousPath, meta = {}, log = () => {}, now = () => performance.now() }: WriteIndexInput): Promise<WriteStats> {
+export async function writeIndex({ items, embedder, outPath, previousPath, checkpoint, meta = {}, log = () => {}, now = () => performance.now() }: WriteIndexInput): Promise<WriteStats> {
   const tick = throttle(undefined, now);
   const tmpPath = `${outPath}.tmp`;
   rmSync(tmpPath, { force: true });
   const previous = loadPreviousVectors(previousPath, embedder, log);
   const db = openDatabase(tmpPath);
   const stats: WriteStats = { items: 0, chunks: 0, embedded: 0, reused: 0 };
-  let pending: { chunkId: bigint; text: string }[] = [];
+  let checkpointed = 0;
+  const hashes = new Set<string>();
+  let pending: { chunkId: bigint; hash: string; text: string }[] = [];
   let stmt: Statements;
 
+  const embedPending = async () => {
+    const vectors = await embedder.embed(pending.map((p) => p.text));
+    const blobs = vectors.map((v) => toBlob(quantizeInt8(v)));
+    checkpoint?.putVectors(embedder.modelKey, pending.map((p, i) => ({ hash: p.hash, embedding: blobs[i] })));
+    return blobs;
+  };
   const flush = async () => {
     if (pending.length === 0) return;
-    const vectors = await embedder.embed(pending.map((p) => p.text));
+    const blobs = await embedPending();
     db.exec('BEGIN');
-    pending.forEach((p, i) => stmt.vector.run(p.chunkId, toBlob(quantizeInt8(vectors[i]))));
+    pending.forEach((p, i) => stmt.vector.run(p.chunkId, blobs[i]));
     db.exec('COMMIT');
     stats.embedded += pending.length;
     pending = [];
@@ -140,12 +155,15 @@ export async function writeIndex({ items, embedder, outPath, previousPath, meta 
         const hash = chunkHash(chunk);
         const chunkId = insertChunk(stmt, itemId, chunk, hash);
         stats.chunks += 1;
+        if (checkpoint) hashes.add(hash);
         const known = previous.get(hash);
-        if (known) {
-          stmt.vector.run(chunkId, known);
+        const saved = known ?? checkpoint?.vector(embedder.modelKey, hash) ?? null;
+        if (saved) {
+          stmt.vector.run(chunkId, saved);
           stats.reused += 1;
+          if (!known) checkpointed += 1;
         } else {
-          pending.push({ chunkId, text: chunk.text });
+          pending.push({ chunkId, hash, text: chunk.text });
         }
       }
       db.exec('COMMIT');
@@ -159,11 +177,21 @@ export async function writeIndex({ items, embedder, outPath, previousPath, meta 
     db.exec('VACUUM');
     db.close();
     renameSync(tmpPath, outPath);
-    log(`index written: ${stats.items} items, ${stats.chunks} chunks, ${stats.embedded} embedded, ${stats.reused} reused`);
+    log(`index written: ${stats.items} items, ${stats.chunks} chunks, ${stats.embedded} embedded, ${stats.reused} reused${checkpointed ? ` (${checkpointed} from the checkpoint)` : ''}`);
+    // The index now holds every vector; the checkpoint keeps only what a later full build could still reuse.
+    if (checkpoint) {
+      const pruned = checkpoint.pruneVectors(embedder.modelKey, hashes);
+      if (pruned) log(`checkpoint: ${pruned} stale vectors dropped`);
+    }
     return stats;
   } catch (error) {
     try { db.close(); } catch { /* already closed */ }
     rmSync(tmpPath, { force: true });
+    // A provider that gave up (the rate limit, a dead socket) ends the build here; the chunks waiting for
+    // a batch are embedded into the checkpoint first, so the next run starts where this one stopped.
+    if (checkpoint && pending.length) {
+      try { await embedPending(); } catch { /* the original error is the one to report */ }
+    }
     throw error;
   }
 }

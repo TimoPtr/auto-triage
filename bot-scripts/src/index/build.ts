@@ -6,6 +6,7 @@ import type { BuildPlan } from './plan.ts';
 import type { Config } from '../config/types.ts';
 import type { Embedder } from '../embed/embedder.ts';
 import type { Provider } from '../providers/types.ts';
+import type { VectorCheckpoint } from '../store/raw.ts';
 
 export interface BuildIndexInput {
   config: Config;
@@ -15,11 +16,13 @@ export interface BuildIndexInput {
   embedder: Embedder;
   providers: Provider[];
   plan: BuildPlan;
+  /** Vectors of a full build survive a killed run here. */
+  checkpoint?: VectorCheckpoint;
   log?: (line: string) => void;
 }
 
 /** Builds the index file for a config from its providers, in full or incrementally as the plan says. */
-export async function buildIndex({ config, configHash, outPath, previousPath, embedder, providers, plan, log = () => {} }: BuildIndexInput): Promise<WriteStats> {
+export async function buildIndex({ config, configHash, outPath, previousPath, embedder, providers, plan, checkpoint, log = () => {} }: BuildIndexInput): Promise<WriteStats> {
   const started = performance.now();
   log(`build mode: ${plan.mode} (${plan.reason})`);
   const meta = {
@@ -28,7 +31,7 @@ export async function buildIndex({ config, configHash, outPath, previousPath, em
   };
   const stats = plan.mode === 'incremental' && plan.since && previousPath
     ? await incrementalBuild({ previousPath, outPath, providers, since: plan.since, embedder, meta, log })
-    : await writeIndex({ items: concat(providers, log), embedder, outPath, previousPath, meta, log });
+    : await writeIndex({ items: concat(providers, log), embedder, outPath, previousPath, checkpoint, meta, log });
   log(`build finished in ${elapsedSeconds(started)}s`);
   return stats;
 }
