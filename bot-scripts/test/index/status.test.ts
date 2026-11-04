@@ -59,11 +59,25 @@ test('rawVersions exposes the three version numbers', () => {
   assert.deepEqual(rawVersions(), { formatVersion: FORMAT_VERSION, schemaVersion: SCHEMA_VERSION, rawSchemaVersion: RAW_SCHEMA_VERSION });
 });
 
-test('writeOutputs appends key=value lines to the output file', async () => {
+test('writeOutputs appends heredoc outputs with one random delimiter per call', async () => {
   const { writeOutputs } = await import('../../src/cli/index-status.ts');
   const out = join(tmp, 'outputs.txt');
   writeOutputs({ status: 'fresh', 'age-days': 0.5, reason: null }, out);
-  assert.equal(readFileSync(out, 'utf8'), 'status=fresh\nage-days=0.5\nreason=\n');
+  const written = readFileSync(out, 'utf8');
+  const match = /^status<<(ghadelimiter_[0-9a-f-]{36})\nfresh\n\1\nage-days<<\1\n0.5\n\1\nreason<<\1\n\n\1\n$/.exec(written);
+  assert.ok(match, written);
+  writeOutputs({ status: 'stale' }, out);
+  assert.ok(!readFileSync(out, 'utf8').endsWith(`${match[1]}\n`), 'the delimiter changes between calls');
+});
+
+test('writeOutputs keeps a value with newlines inside its own output', async () => {
+  const { writeOutputs } = await import('../../src/cli/index-status.ts');
+  const out = join(tmp, 'injected.txt');
+  writeOutputs({ reason: 'first line\nitems=999\nstatus<<EOF' }, out);
+  const lines = readFileSync(out, 'utf8').split('\n');
+  assert.ok(lines[0].startsWith('reason<<ghadelimiter_'));
+  assert.deepEqual(lines.slice(1, 4), ['first line', 'items=999', 'status<<EOF']);
+  assert.equal(lines[4], lines[0].slice('reason<<'.length));
 });
 
 test('reports when the last full build happened', async () => {

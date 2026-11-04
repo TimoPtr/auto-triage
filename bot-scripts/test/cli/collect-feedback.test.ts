@@ -1,4 +1,5 @@
 import { test } from 'node:test';
+import { readOutputs } from './outputs.ts';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
 import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
@@ -28,7 +29,7 @@ test.before(() => {
 function run(rawPath: string, name: string) {
   const out = join(tmp, name); const outputs = join(tmp, `${name}.outputs`); const summary = join(tmp, `${name}.summary`);
   const r = spawnSync(process.execPath, [cli, '--config', configPath, '--raw', rawPath, '--repo', 'o/r', '--out', out], { env: { ...process.env, GITHUB_OUTPUT: outputs, GITHUB_STEP_SUMMARY: summary }, encoding: 'utf8' });
-  return { ...r, out, outputs: existsSync(outputs) ? readFileSync(outputs, 'utf8') : '', summary: existsSync(summary) ? readFileSync(summary, 'utf8') : '' };
+  return { ...r, out, outputs: readOutputs(outputs), summary: existsSync(summary) ? readFileSync(summary, 'utf8') : '' };
 }
 
 test('writes the feedback and the digest for a raw store with a bot comment', () => {
@@ -37,7 +38,7 @@ test('writes the feedback and the digest for a raw store with a bot comment', ()
   const feedback = JSON.parse(readFileSync(join(r.out, 'feedback.json'), 'utf8'));
   assert.equal(feedback.version, 1); assert.equal(feedback.comments.length, 1); assert.equal(feedback.comments[0].up, 1);
   assert.match(readFileSync(join(r.out, 'digest.md'), 'utf8'), /comments: 1/);
-  assert.match(r.outputs, /comments=1\nsuppressed=0\ndigest=true/);
+  assert.deepEqual(r.outputs, { comments: '1', suppressed: '0', digest: 'true' });
   assert.deepEqual(JSON.parse(r.stdout), { comments: 1, suppressed: 0, refreshed: 0 });
   assert.match(r.summary, /feedback: 1 bot comment/);
 });
@@ -47,7 +48,7 @@ test('writes an empty feedback without a digest when no bot comment exists', () 
   assert.equal(r.status, 0, r.stderr);
   assert.deepEqual(JSON.parse(readFileSync(join(r.out, 'feedback.json'), 'utf8')).comments, []);
   assert.ok(!existsSync(join(r.out, 'digest.md')));
-  assert.match(r.outputs, /comments=0\nsuppressed=0\ndigest=false/);
+  assert.deepEqual(r.outputs, { comments: '0', suppressed: '0', digest: 'false' });
 });
 
 test('exits 0 with a message when the raw store is missing', () => {

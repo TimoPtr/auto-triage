@@ -1,4 +1,5 @@
 import { test } from 'node:test';
+import { readOutputs } from './outputs.ts';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
 import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
@@ -21,7 +22,7 @@ const agentOutput = (items: unknown[]) => { const p = join(tmp, `agent-${Math.ra
 function run(config: string, agent: string, name: string, handoff = handoffPath) {
   const outDir = join(tmp, name); const outputs = join(tmp, `${name}.outputs`); const summary = join(tmp, `${name}.summary.md`);
   const r = spawnSync(process.execPath, [cli, '--config', config, '--handoff', handoff, '--agent-output', agent, '--out-dir', outDir, '--run-id', '77'], { env: { ...process.env, GITHUB_OUTPUT: outputs, GITHUB_STEP_SUMMARY: summary }, encoding: 'utf8' });
-  return { ...r, outDir, outputs: existsSync(outputs) ? readFileSync(outputs, 'utf8') : '', summary: existsSync(summary) ? readFileSync(summary, 'utf8') : '' };
+  return { ...r, outDir, outputs: readOutputs(outputs), summary: existsSync(summary) ? readFileSync(summary, 'utf8') : '' };
 }
 
 test('renders the comment and asks to post it', () => {
@@ -29,7 +30,7 @@ test('renders the comment and asks to post it', () => {
   assert.equal(r.status, 0, r.stderr);
   const comment = readFileSync(join(r.outDir, 'comment.md'), 'utf8');
   assert.match(comment, /^<!-- knowledge-bot v\d+\.\d+\.\d+ run=77 tier=high issue=7612 -->/);
-  assert.match(r.outputs, /tier=high\npost=true\ncomment-path=.*comment\.md/);
+  assert.equal(r.outputs.tier, 'high'); assert.equal(r.outputs.post, 'true'); assert.match(r.outputs['comment-path'], /comment\.md$/);
   const verdict = JSON.parse(readFileSync(join(r.outDir, 'verdict.json'), 'utf8'));
   assert.equal(verdict.tier, 'high'); assert.equal(verdict.staged, false); assert.equal(verdict.posted, true);
   assert.match(r.summary, /tier: high/); assert.match(r.summary, /Reboot fixes it/);
@@ -38,7 +39,7 @@ test('renders the comment and asks to post it', () => {
 test('writes the comment to the summary only in staged mode', () => {
   const r = run(stagedConfig, agentOutput([{ type: 'post_triage_verdict', confidence: '60', related: '0' }]), 'staged');
   assert.equal(r.status, 0, r.stderr);
-  assert.match(r.outputs, /tier=medium\npost=false/);
+  assert.equal(r.outputs.tier, 'medium'); assert.equal(r.outputs.post, 'false');
   assert.match(r.summary, /staged: the comment below was not posted/);
   assert.match(r.summary, /<!-- knowledge-bot v\d+\.\d+\.\d+ run=77 tier=medium issue=7612 -->/);
   const verdict = JSON.parse(readFileSync(join(r.outDir, 'verdict.json'), 'utf8'));
@@ -48,7 +49,7 @@ test('writes the comment to the summary only in staged mode', () => {
 test('posts nothing for a low tier and fails loudly on a verdict without confidence', () => {
   const low = run(configPath, agentOutput([{ type: 'post_triage_verdict', confidence: '10', component: 'widgets' }]), 'low');
   assert.equal(low.status, 0, low.stderr);
-  assert.match(low.outputs, /tier=low\npost=false/);
+  assert.equal(low.outputs.tier, 'low'); assert.equal(low.outputs.post, 'false');
   assert.ok(!existsSync(join(low.outDir, 'comment.md')));
   assert.match(low.summary, /no comment for this tier/); assert.match(low.summary, /component: widgets/);
   const none = run(configPath, agentOutput([]), 'none');
@@ -63,7 +64,7 @@ test('lowers the tier when the handoff marks a demotion', () => {
   writeFileSync(demoted, JSON.stringify(handoff));
   const r = run(configPath, agentOutput([{ type: 'post_triage_verdict', confidence: '80', duplicates: '0', answer: 'Reboot fixes it.' }]), 'demoted', demoted);
   assert.equal(r.status, 0, r.stderr);
-  assert.match(r.outputs, /tier=medium\npost=true/);
+  assert.equal(r.outputs.tier, 'medium'); assert.equal(r.outputs.post, 'true');
   const verdict = JSON.parse(readFileSync(join(r.outDir, 'verdict.json'), 'utf8'));
   assert.equal(verdict.demoted, true); assert.equal(verdict.tier, 'medium');
   assert.match(r.summary, /demoted from high: resembles suppressed issue #4242/);

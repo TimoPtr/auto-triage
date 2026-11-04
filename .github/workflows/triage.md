@@ -87,6 +87,7 @@ on:
         persist-credentials: false
     - id: bot
       if: steps.trigger.outputs.run == 'true'
+      timeout-minutes: 10
       uses: ./.knowledge-bot/auto-triage/actions/setup-bot
     - id: config
       if: steps.trigger.outputs.run == 'true'
@@ -96,6 +97,7 @@ on:
       run: node "$BOT_SCRIPTS_DIR/src/cli/validate-config.ts" --config "$CONFIG"
     - id: index
       if: steps.trigger.outputs.run == 'true'
+      timeout-minutes: 10
       uses: ./.knowledge-bot/auto-triage/actions/restore-index
       with:
         slug: ${{ steps.config.outputs.slug }}
@@ -112,6 +114,7 @@ on:
     # No token here: this step runs the embedding model and the rest of the dependencies.
     - id: prepare
       if: steps.trigger.outputs.run == 'true'
+      timeout-minutes: 5
       env:
         BOT_SCRIPTS_DIR: ${{ steps.bot.outputs.bot-scripts-dir }}
         KB_MODEL_CACHE: ${{ steps.bot.outputs.model-cache }}
@@ -165,6 +168,10 @@ steps:
       path: /tmp/gh-aw/agent
 
 safe-outputs:
+  # A detector that could not be installed, run or parsed fails the detection job instead of
+  # downgrading to a warning: the verdict is never posted on an unverified transcript.
+  threat-detection:
+    continue-on-error: false
   # gh-aw's diagnostic outputs open issues with the agent's own text; the verdict is the only
   # output this workflow needs, so nothing unrendered can reach the repository.
   report-missing-tool: false
@@ -213,8 +220,9 @@ safe-outputs:
           type: string
           default: ""
       runs-on: ubuntu-latest
-      # Same gate as gh-aw's own safe-output job: nothing is rendered or posted unless the threat detection passed.
-      if: needs.detection.result == 'success'
+      # gh-aw adds its own gate on the detection job's result; this one also requires the detector's verdict,
+      # so nothing is rendered or posted unless the threat detection ran and passed.
+      if: needs.detection.outputs.detection_success == 'true'
       permissions:
         contents: read
         issues: write

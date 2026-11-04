@@ -6,6 +6,7 @@ import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'no
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { readOutputs } from './outputs.ts';
 
 const cli = fileURLToPath(new URL('../../src/cli/prepare-triage.ts', import.meta.url));
 const configPath = fileURLToPath(new URL('../fixtures/config/android.yaml', import.meta.url));
@@ -37,7 +38,7 @@ test('stops without a usable index and records the outputs', async () => {
     { GH_TOKEN: 't', GITHUB_API_URL: baseUrl, GITHUB_OUTPUT: outputs, GITHUB_STEP_SUMMARY: summary });
   assert.equal(status, 0, stderr);
   assert.equal(JSON.parse(stdout).reason, 'no-usable-index');
-  assert.match(readFileSync(outputs, 'utf8'), /should-continue=false\nreason=no-usable-index\nbest-similarity=0/);
+  assert.deepEqual(readOutputs(outputs), { 'should-continue': 'false', reason: 'no-usable-index', 'best-similarity': '0.00' });
   assert.match(readFileSync(summary, 'utf8'), /no-usable-index/);
   assert.ok(!existsSync(join(tmp, 'handoff.json')));
 });
@@ -56,5 +57,5 @@ test('reads the issue from a file without a token', async () => {
     { GH_TOKEN: '', GITHUB_TOKEN: '', GITHUB_API_URL: 'http://127.0.0.1:9', GITHUB_OUTPUT: outputs });
   assert.equal(status, 0, stderr);
   assert.equal(JSON.parse(stdout).reason, 'no-usable-index');
-  assert.match(readFileSync(outputs, 'utf8'), /should-continue=false/);
+  assert.equal(readOutputs(outputs)['should-continue'], 'false');
 });

@@ -113,6 +113,14 @@ test('encodes unsafe characters in urls and drops non-http ones', () => {
   assert.equal(excerptLine(bad, 'o/r'), '- Forum: Bad (Jan 2025)');
 });
 
+test('escapes what would open a heading, a list, a quote or a rule at the start of an answer line', () => {
+  assert.equal(
+    sanitizeAnswer('# Heading\n- item\n+ item\n1. step\n2) step\n> quote\n---\nText\n===\n-5 degrees is -5'),
+    '\\# Heading\n\\- item\n\\+ item\n1\\. step\n2\\) step\n\\> quote\n\\---\nText\n\\===\n\\-5 degrees is -5',
+  );
+  assert.equal(sanitizeAnswer('  #5610 fixed it'), '`#5610` fixed it');
+});
+
 test('escapes markdown in the answer and neutralises issue references and bare links', () => {
   assert.equal(sanitizeAnswer('Fix in #5610 and www.evil.example //cdn.evil/x *bold* _u_ `code` [x](y) a|b'), 'Fix in `#5610` and \\*bold\\* \\_u\\_ \\`code\\` x a\\|b');
 });

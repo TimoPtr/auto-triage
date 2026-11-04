@@ -1,14 +1,19 @@
 #!/usr/bin/env node
 import { parseArgs } from 'node:util';
+import { randomUUID } from 'node:crypto';
 import { appendFileSync } from 'node:fs';
 import { pathToFileURL } from 'node:url';
 import { loadConfig } from '../config/load.ts';
 import { DEFAULT_FRESH_DAYS, indexStatus, rawVersions } from '../index/status.ts';
 
-/** Appends `key=value` lines to the GitHub Actions output file when one is set; null becomes empty. */
+/**
+ * Appends the values to the GitHub Actions output file when one is set, each in heredoc form with a
+ * random delimiter so a value holding a newline cannot define a second output; null becomes empty.
+ */
 export function writeOutputs(values: Record<string, string | number | boolean | null>, outputFile = process.env.GITHUB_OUTPUT): void {
   if (!outputFile) return;
-  const lines = Object.entries(values).map(([key, value]) => `${key}=${value === null ? '' : String(value)}`);
+  const delimiter = `ghadelimiter_${randomUUID()}`;
+  const lines = Object.entries(values).map(([key, value]) => `${key}<<${delimiter}\n${value === null ? '' : String(value)}\n${delimiter}`);
   appendFileSync(outputFile, `${lines.join('\n')}\n`);
 }
 
