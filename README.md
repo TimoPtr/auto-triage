@@ -1,19 +1,36 @@
 # auto-triage
 
-Shared code for the Home Assistant knowledge bot: index builders, retrieval, actions and
-agentic workflow templates. Consumer repositories hold a `.github/knowledge-bot.yaml` and thin
-callers. Design: the knowledge bot spec in `home-assistant/android`,
-`docs/superpowers/specs/2026-10-15-knowledge-bot-design.md`.
+Shared code for the Home Assistant knowledge bot: index builders, retrieval, composite actions and
+the agentic triage workflow. A consumer repository holds a `.github/knowledge-bot.yaml` and three
+thin caller workflows; everything else runs from here, pinned by release. Design: the knowledge bot
+spec in `home-assistant/android`, `docs/superpowers/specs/2026-10-15-knowledge-bot-design.md`.
+
+How it fits together:
+
+- **Index.** A nightly workflow reads the consumer's issues, pull requests, discussions, releases,
+  docs, code and forum topics into one SQLite file (FTS5 plus sqlite-vec, embeddings computed
+  locally, no API key) and publishes it to the Actions cache. A second workflow appends an issue or
+  pull request as it closes.
+- **Triage.** A new issue is searched against the index. When something close enough exists, a
+  Copilot agent reads the excerpts and a deterministic job posts one comment with the closest
+  earlier reports, discussions and docs, and an answer when the agent is confident. Nothing else
+  is posted or labeled.
+- **Quality loop.** The nightly build collects the reactions and outcomes of the bot's comments
+  into a digest issue, suppresses what was downvoted, and scores retrieval against cases mined
+  from the repository's own history.
+
+Contents: [Set up a repository](#set-up-a-repository) · [Configuration](#configuration) ·
+[Workflows](#workflows) · [Sizing and limits](#sizing-and-limits) · [Local use](#local-use) ·
+[Benchmark](#benchmark) · [Quality loop](#quality-loop) · [Contributing](#contributing)
 
 ## Set up a repository
 
 Five steps, in this order; the index must exist before the triage workflow is worth installing.
-Everything below is already in place for `home-assistant/android` and can be copied from there.
+Everything below is in place for `home-assistant/android` and can be copied from there.
 
-1. **Write `.github/knowledge-bot.yaml`.** The schema is `schemas/config.base.json` plus one
-   fragment per provider under `schemas/providers/`; unknown keys fail the build. A minimal config
-   that indexes the repository's own issues and pull requests, its documentation from another
-   repository and one forum category:
+1. **Write `.github/knowledge-bot.yaml`** ("Configuration"). A minimal config that indexes the
+   repository's own issues and pull requests, its documentation from another repository and one
+   forum category:
 
        # Knowledge bot configuration. Schema: https://github.com/TimoPtr/auto-triage/tree/main/schemas
        version: 1
@@ -50,36 +67,26 @@ Everything below is already in place for `home-assistant/android` and can be cop
          minSimilarity: 0.35
          suppressSimilarity: 0.8
 
-   Every source kind and its options are described under "Sources"; `releases`, `discussions`,
-   `code` and `files` are the other kinds. Check it locally before committing:
-   `cd bot-scripts && node src/cli/validate-config.ts --config <path>`, or add the `selfcheck.yml`
-   reusable workflow to run that check on pull requests that touch the file.
+   Check it locally with `cd bot-scripts && node src/cli/validate-config.ts --config <path>`, or
+   add the `selfcheck.yml` reusable workflow to run that check on pull requests that touch the file.
 
-2. **Add the two caller workflows** from "Run it in GitHub Actions": `knowledge-index.yml`
-   (nightly, manual, and on pushes that touch the config; `checkouts:` lists the repositories read
-   from a checkout, here `my-org/my-product-docs`) and `knowledge-append.yml` (`issues: closed`,
-   `pull_request_target: closed`). They need `contents: read`, `actions: read` (the artifact
-   fallback) and, for the build, `issues: write` (the tracking and digest issues, label
-   `knowledge-bot`, created on first use; `tracking: false` turns them off). No secret is added:
+2. **Add the index callers** from "Workflows": `knowledge-index.yml` (nightly, manual, and on
+   pushes that touch the config) and `knowledge-append.yml` (on close). No secret is added:
    everything runs on the workflow token.
 
-3. **Let the first fill converge.** The workflow token allows 1000 API requests per hour, so a
-   large repository needs two or three nightly runs before the first index is published; a manual
-   `workflow_dispatch` between nights speeds it up, and the run summary shows the progress. A
-   tracking issue stays open while the index is missing or stale and closes on the first healthy
-   run. After that, a nightly run is incremental and takes a few minutes (see "Build time").
+3. **Let the first fill converge.** A large repository needs more than one run before the first
+   index is published; each run keeps what it fetched and embedded, and the next one resumes
+   ("Sizing and limits"). A manual `workflow_dispatch` between nights speeds it up, the run summary
+   shows the progress, and a tracking issue stays open until the first healthy run. After that a
+   nightly run is incremental and takes minutes.
 
-4. **Add the triage caller** once the index exists: `knowledge-triage.yml` from "Triage
-   workflow", on `issues: [opened, labeled]` and `workflow_dispatch`, calling
-   `.github/workflows/triage.lock.yml` of this repository with `contents: read`, `actions: read`,
-   `issues: write`, `pull-requests: read` and `copilot-requests: write` (GitHub refuses the call at
-   start-up when a job of the called workflow asks for more than the caller grants). No gh-aw tooling is needed in the consumer; the
-   repository must have Copilot agentic workflows enabled. With `staged: true` every new issue
-   produces a run whose summary holds the comment that would have been posted; read those for a
-   week or two, then set `staged: false` (the config is read at run time). Create the `ai-recheck`
+4. **Add the triage caller** `knowledge-triage.yml` once the index exists. Create the `ai-recheck`
    label once (`gh label create ai-recheck --description "Ask the knowledge bot to triage this
-   issue again"`): GitHub refuses to apply a label that does not exist. "Triage workflow" explains
-   the three jobs and `ai-recheck`.
+   issue again"`), since GitHub refuses to apply a label that does not exist, and make sure the
+   repository has Copilot agentic workflows enabled; no gh-aw tooling is needed in the consumer.
+   With `staged: true` every new issue produces a run whose summary holds the comment that would
+   have been posted; read those for a week or two, then set `staged: false` (the config is read at
+   run time).
 
 5. **Optional: benchmark cases.** Point `evalCases` at a directory and run `mine-cases` once to
    seed it from the repository's own duplicates and fixes ("Benchmark"); the nightly build then
@@ -92,54 +99,371 @@ action, so Renovate can propose the next release:
     uses: TimoPtr/auto-triage/.github/workflows/triage.lock.yml@<sha> # vX.Y.Z
 
 A test bed may follow `@main` instead. The reusable workflows check this repository out at the
-ref the caller named, so one pin covers the workflows, the composite actions, the scripts and the
-compiled triage lock together ("Releases").
+ref the caller named (`job.workflow_repository` at `job.workflow_sha`), so one pin covers the
+workflows, the composite actions, the scripts and the compiled triage lock together.
 
-## Releases
+## Configuration
 
-Releases are semver tags on `main`. During `0.x` a change to the config schema, the handoff or the
-comment format bumps the minor version; anything else bumps the patch. Each bot comment starts
-with a hidden marker naming the release that produced it (`<!-- knowledge-bot vX.Y.Z ... -->`), read
-from `bot-scripts/package.json`, so the feedback digest can compare releases.
+The schema is `schemas/config.base.json` plus one fragment per provider under `schemas/providers/`;
+unknown keys fail the build, and defaults come from the schema.
 
-To cut one: the tests and the lock check are green on `main`, bump `version` in
-`bot-scripts/package.json` in the last commit, then
+### Sources
 
-    git tag -a vX.Y.Z -m vX.Y.Z && git push origin vX.Y.Z   # tags are signed, so they must be annotated
-    gh release create vX.Y.Z --generate-notes
+Under `providers.github.<owner/repo>`:
 
-Say in the notes when the release forces a full index rebuild: a new embedding model, a chunk
-schema change, or anything that enters the config hash makes the next nightly build start over
-("Build time"), and consumers with a large corpus should expect that run to take longer.
+- `issues`: open and closed issues with their comments; the author role of every chunk comes from
+  the API association, never from the text.
+- `pulls`: closed pull requests, merged or not, with the review threads that have a maintainer
+  reply (one chunk per comment with its own role), the issues they close (GitHub's closing
+  references, read through GraphQL, plus closing keywords in the body) and the files touched; bot
+  authors are skipped by default. Review chunks are indexed but never retrieved unless asked for
+  (`--with-reviews` on the query CLI), since they talk about code rather than symptoms.
+- `discussions`: the discussions of the named categories with their accepted answer, read through
+  GraphQL.
+- `releases`: published release notes chunked by section; prereleases are opt-in.
+- `docs`: a markdown tree with front matter, read from a checkout and linked by slug or id when
+  they stay on the docs site.
+- `code`: Kotlin sources as one chunk per top-level declaration, with the string resource keys it
+  uses; maintainer audience.
+- `files`: Android string resources (`strings`) or markdown trees such as agent skills (`markdown`).
 
-## Layout
+Under `providers.discourse.<host>`: the topics of the named categories (slug or id) with their
+accepted answer, optionally filtered by tag. `solvedOnly` makes the site list only solved topics,
+`closedWithinDays` ends the listing at the first page outside the window, and `requestsPerSecond`
+(3 by default) throttles the client, which waits out a 429.
 
-- `bot-scripts/` TypeScript run natively by Node 26 (type stripping, no build step): providers, index
-  writer, retrieval, CLIs. `npm ci --ignore-scripts --omit=dev` installs the runtime; `tsc --noEmit` is a
-  dev-only check. Imports keep the `.ts` extension, and no syntax that needs transformation (enums,
-  parameter properties, decorators) is used.
-- `bot-scripts/src/triage/` the deterministic halves of the triage workflow: the gate and handoff
-  builder, the verdict parser and the comment renderer.
-- `bot-scripts/src/feedback/` the quality loop: reactions, replies and outcomes of the bot comments,
-  the suppression list and the digest.
-- `.github/workflows/` the reusable workflows consumers call: `build-index.yml`, `append-on-close.yml`,
-  `selfcheck.yml`, and the gh-aw workflow `triage.md` with its compiled `triage.lock.yml`.
-- `schemas/` JSON Schema for the config, the eval cases, the handoff and the index metadata.
-- `docs/superpowers/plans/` implementation plans, one per phase.
+### Embedding
 
-## Development
+`embedding` names the model (a Hugging Face repository that transformers.js can load), the commit
+of the model repository as `revision`, `dtype`, `dimensions` and `pooling`; `queryPrefix` and
+`documentPrefix` serve models that expect one. The model is downloaded once (about 35 MB for the
+default) and cached. Any config change triggers a full rebuild; a different model makes the
+restored index unusable, so that build starts over.
 
-    cd bot-scripts
-    npm ci --ignore-scripts
-    npm test          # tsc --noEmit on src (strict) and tests, then node --test
+### Triage settings
 
-Renovate (`renovate.json`, the android presets) keeps the npm packages and the action pins in the
-hand-written workflows and composite actions current; `triage.lock.yml` and `.github/aw/` are
-excluded because `gh aw compile` owns their pins. An update of the embedding stack carries a note
-in its pull request: check the eval on a rebuilt index first, and announce the rebuild in the
-release notes.
+- `staged`: the comment goes to the run summary instead of the issue.
+- `minSimilarity`: the gate; an issue whose best match scores below it never reaches the agent.
+- `confidence.answer` (default 75) and `confidence.links` (default 45): the agent's confidence at
+  which the comment carries an answer, or only links; below `links` nothing is posted.
+- `suppressSimilarity` (default 0.8): similarity to an issue whose earlier bot comment was
+  downvoted or dismissed from which the verdict drops one tier ("Quality loop").
+- `evalCases`: directory of the benchmark cases, relative to the config file ("Benchmark").
 
-## Build and query an index locally
+## Workflows
+
+A consumer calls three reusable workflows of this repository. They check this repository out at the
+commit the caller references, so the actions and scripts always match the workflow version. The
+pipeline self-test `ci-pipeline.yml` runs on every push to `main` and every pull request: it
+validates `examples/selfcheck/knowledge-bot.yaml`, builds an index of this repository's own issues
+and docs through the reusable workflow, restores it in a second job and runs one query.
+
+### Index build
+
+`build-index.yml` builds or updates the index. Inputs: `slug` (prefix of the cache keys and
+artifact names), `config` (default `.github/knowledge-bot.yaml`), `checkouts` (the repositories
+read from a checkout, one `owner/repo` per line), `timeout-minutes` (default 350), `tracking`
+(default true) and `full`. Nightly rebuild, manual run, and a run on every push that touches the
+config:
+
+    name: Knowledge index
+
+    on: # yamllint disable-line rule:truthy
+      schedule:
+        - cron: "17 3 * * *"
+      workflow_dispatch:
+      push:
+        branches: [main]
+        paths:
+          - .github/knowledge-bot.yaml
+          - .github/workflows/knowledge-index.yml
+
+    permissions: {}
+
+    jobs:
+      build:
+        uses: TimoPtr/auto-triage/.github/workflows/build-index.yml@<sha> # vX.Y.Z
+        permissions:
+          contents: read
+          actions: read
+          issues: write
+        with:
+          slug: android
+          checkouts: |
+            home-assistant/companion.home-assistant
+            home-assistant/contributors.home-assistant.io
+
+`actions: read` is for the artifact fallback, `issues: write` for the tracking and digest issues
+(label `knowledge-bot`, created on first use; `tracking: false` turns them off).
+
+The pieces, in order:
+
+- `actions/setup-bot` installs `bot-scripts` with Node 26 and caches the embedding model.
+- `actions/restore-index` restores the index and the raw store from the Actions cache by key prefix
+  (`<slug>-index-v<format>-`, `<slug>-raw-v<schema>-`), validates the index against the config,
+  and falls back to the newest `<slug>-index` artifact produced by a default-branch run. Outputs:
+  `found`, `usable`, `status` (`fresh` under two days, `stale`, `unusable` with a `reason` such as
+  another model, `missing`), `source` (`cache`, `artifact`, `none`), `age-days`, `items`, `chunks`.
+- The build itself, stopped 20 minutes before the job timeout so that its raw store is published
+  even when it is killed.
+- `actions/publish-index` saves the index and raw store to the cache under a run-scoped key and
+  uploads them as artifacts with 30 day retention; it refuses an unusable index.
+- After a successful publish, the test split of the consumer's eval cases runs against the new
+  index, with the summary in the job summary and the run uploaded as the `eval-<slug>` artifact;
+  then the feedback collection of the "Quality loop".
+- `actions/report-index-status` writes the job summary and maintains the tracking issue, which
+  reports `missing` until the first index is published.
+
+**Incremental or full.** With a usable restored index, the build is incremental: it starts from a
+copy of that index and asks each source only for what changed since the index was started (one hour
+of overlap): issues through the API's `since`, pull requests, discussions, releases and forum
+categories listed newest first until the first older item. Docs, code and files are re-read from
+the checkouts every time, which takes seconds and is how a deleted page or file leaves the index. A
+listed item that no longer qualifies (an issue reopened when only closed ones are indexed, a forum
+topic that lost its tag) is removed. What the sources cannot report incrementally waits for the
+full rebuild: a deleted or transferred issue, a reopened pull request, a topic or discussion moved
+out of its category, a forum answer accepted without a new post, a forum topic that lost its
+accepted answer under `solvedOnly`. The full rebuild happens when the last one is 7 or more days
+old, when the config changed, when no usable index exists, or when the `full` input is set (the
+android caller exposes it on `workflow_dispatch`).
+
+### Append on close
+
+`append-on-close.yml` upserts one item in place, so a resolution is searchable shortly after the
+issue or pull request closes. Inputs: `slug`, `config` and `item` (`issue:<n>` or `pull:<n>`).
+
+    name: Knowledge index append
+
+    on: # yamllint disable-line rule:truthy
+      issues:
+        types: [closed]
+      pull_request_target:
+        types: [closed]
+
+    permissions: {}
+
+    jobs:
+      append:
+        uses: TimoPtr/auto-triage/.github/workflows/append-on-close.yml@<sha> # vX.Y.Z
+        permissions:
+          contents: read
+          actions: read
+        with:
+          slug: android
+          item: ${{ github.event_name == 'issues' && format('issue:{0}', github.event.issue.number) || format('pull:{0}', github.event.pull_request.number) }}
+
+Builds and appends of one slug share a concurrency group, so an append waits for a running build.
+GitHub keeps one pending run per group: closes that pile up during a long build show as cancelled
+and are covered by the next nightly rebuild. An append that changes nothing (a bot pull request
+that was never indexed) publishes nothing.
+
+`pull_request_target` is deliberate: a `pull_request` run from a fork writes the cache into the
+fork's scope, invisible to the nightly build. The called workflow never checks out pull request
+code; it reads the API with the workflow token only.
+
+### Triage
+
+`.github/workflows/triage.md` is a gh-aw workflow (Copilot engine) that comments on a new issue
+with the closest earlier reports, discussions and docs, and a short answer when it is confident.
+Its compiled `triage.lock.yml` is committed here (the `lock` job of the test workflow recompiles
+it with the gh-aw version named in its first line and fails on a difference; regenerate with
+`gh aw compile triage`). Inputs: `config`, `issue-number`, `event-action` and `label`. A consumer
+calls it from a thin workflow that owns the triggers:
+
+    name: Knowledge triage
+
+    on: # yamllint disable-line rule:truthy
+      issues:
+        types: [opened, labeled]
+      workflow_dispatch:
+        inputs:
+          issue-number:
+            description: Issue to triage
+            required: true
+            type: string
+
+    permissions: {}
+
+    jobs:
+      triage:
+        # An issue created with a label fires opened and labeled at once; only ai-recheck starts a run.
+        if: github.event_name != 'issues' || github.event.action != 'labeled' || github.event.label.name == 'ai-recheck'
+        concurrency:
+          group: knowledge-triage-${{ github.event.issue.number || inputs.issue-number }}
+          cancel-in-progress: false
+        uses: TimoPtr/auto-triage/.github/workflows/triage.lock.yml@<sha> # vX.Y.Z
+        permissions:
+          contents: read
+          actions: read
+          issues: write
+          pull-requests: read     # gh-aw's own conclusion jobs ask for it
+          copilot-requests: write
+        with:
+          issue-number: ${{ github.event.issue.number || inputs.issue-number }}
+          event-action: ${{ github.event.action || 'dispatch' }}
+          label: ${{ github.event.label.name || '' }}
+
+Every permission a generated job asks for must be granted by the caller or GitHub refuses the call
+at start-up (hence `pull-requests: read` for gh-aw's conclusion jobs, and no reaction on the
+issue). The Copilot engine runs on the workflow token with `copilot-requests: write`; no secret is
+added. A `labeled` event runs only for `ai-recheck`, which is removed again so it can be
+re-applied; a manual run passes `dispatch`. The caller's `if` matters: a run that the called
+workflow refused would still be created by the caller's trigger and wait in its concurrency group.
+Who may trigger a run is the caller's choice of events; the template sets `roles: all` because
+gh-aw otherwise activates only for actors with write access and an outsider's issue would stop
+after pre-activation. Issues from anyone are triaged, so the issue text is treated as data
+everywhere.
+
+What happens, in three jobs:
+
+1. **Pre-activation (no model).** Fetches the issue with `gh api` before anything is installed,
+   checks out the consumer and this repository, restores the index and runs `prepare-triage` from
+   the saved payload, so the step that loads the model and the rest of the dependencies holds no
+   token. The body is cleaned like an indexed issue, embedded, and searched (dense + lexical, with
+   fenced logs lifted into the lexical query + a live forum search on the cleaned text), excluding
+   the issue itself when the index already holds it. The gate stops the run for pull requests, bot
+   authors, empty issues, a missing or unusable index, and a best similarity under
+   `triage.minSimilarity`. Otherwise it writes the handoff (`schemas/handoff.json`: the cleaned
+   issue, up to ten excerpts with ids, source, url, date, audience, outcome and scores, and the
+   confidence thresholds) and uploads it as the `triage-handoff` artifact. A stopped run spends no
+   agent time and posts nothing. This job holds `issues: write` to remove the `ai-recheck` label;
+   that is the one write scope outside the posting job, and no dependency code runs with its token
+   (the index restore uses it for the read-only artifact fallback).
+2. **Agent.** `claude-sonnet-5` on the Copilot engine, five turns, no network, no GitHub tools,
+   `bash` limited to `cat`, `jq`, `head`, `wc` plus gh-aw's defaults (`ls`, `grep`, `sort`, `yq`
+   and the like, and its file `write` tool on any path of the sandbox). It reads
+   `/tmp/gh-aw/agent/handoff.json` and calls `post_triage_verdict` once with `confidence` (0 to
+   100), `duplicates` and `related` (excerpt ids), an optional `answer` and `component`. It never
+   sees the index; what it writes inside the sandbox reaches nothing downstream, since the post
+   job reads the handoff artifact uploaded before the agent ran. gh-aw's diagnostic outputs
+   (`report-missing-tool`, `report-missing-data`, `report-incomplete`), which would open issues
+   with the agent's own text, are disabled: the verdict is the only output.
+3. **post-triage-verdict (no model).** `render-verdict` validates the verdict against the handoff
+   (unknown ids are dropped with a note, an unparsable confidence fails the job), picks the tier
+   (`high` from `triage.confidence.answer`, `medium` from `triage.confidence.links`, `low` below)
+   and renders the comment: a marker `<!-- knowledge-bot v<release> run=<id> tier=<tier>
+   issue=<n> -->`, "Possibly related to earlier reports", "Discussions and docs", the answer on
+   the high tier, and a feedback footer. Links come only from the handoff; titles are escaped and
+   mentions removed; developer-audience excerpts appear only when the issue talks about building,
+   maintainer-audience ones never (`component` goes to the run summary). A low tier posts
+   nothing. The job minimizes earlier bot comments as outdated and posts the new one with `gh api`
+   under its own `issues: write`; the `duplicate` label is never applied.
+
+The pre-activation job writes the gate outcome to the job summary and the post-triage-verdict job
+the tier, the verdict and the comment (or why none was posted), so a run that posts nothing is
+still readable. One case is only in gh-aw's own agent summary: an agent that ends without calling
+the tool, since gh-aw skips the custom job then.
+
+A failed run is reported by gh-aw's conclusion job as an issue in the consumer repository (label
+`agentic-workflows`, one per failure class and day, never auto-closed; the body is gh-aw's own
+diagnostics, sanitized). Since anyone's issue reaches the model, the failure classes an issue
+author can provoke with the issue text (the turn or time budget, a run without the verdict tool, a
+denied tool, the per-run credit cap) are excluded and show only in the run summary; engine,
+billing and configuration failures still open an issue. Decide who in the consumer watches that
+label.
+
+Cost: one model run per triaged issue, bounded by five turns and fifteen minutes; the gate keeps
+pull requests, bot issues and low-similarity issues from reaching the model.
+
+Two things about a called gh-aw workflow, learned on the first runs: its prompt must be embedded
+in the lock (`inlined-imports: true`), since gh-aw otherwise reads the markdown from the caller's
+workspace at run time; and `GH_AW_AGENT_OUTPUT` is read from the step's shell, not through `env.`
+in the same step.
+
+## Sizing and limits
+
+**What a fill costs.** One listing request per 100 issues or pull requests, one comments request
+per issue, one review-comments and one files request per pull request; discussions and closing
+references go through GraphQL in batches; releases are listed in commit order, a handful of
+requests. A `docs`, `code` or `files` provider reads a checkout and costs no request. A Discourse
+category costs one listing request per 30 topics plus one request per kept topic. The android fill
+is about 11 000 GitHub requests.
+
+**What the limits are.** The Actions `GITHUB_TOKEN` has 1000 requests per hour on a personal
+repository and 15 000 on one that belongs to a GitHub Enterprise Cloud account; a user token, for a
+local build, has 5000. The client keeps up to four requests in flight (the comments of several
+issues, the reviews and files of several pull requests) and paces their starts to the quota GitHub
+announces in every response, so it follows whatever limit the token has without being configured:
+about four requests per second on the enterprise quota, and a wait for the next window instead of a
+refused request on a small one. The forum allows about 200 requests a minute per address
+(Discourse's default, measured on community.home-assistant.io on 2026-11-04: a 429 from the 173rd
+request of a burst at eight a second), so `requestsPerSecond` defaults to 3, a 429 is waited out,
+and more concurrency would not help.
+
+**What that means for a large consumer.** The GitHub fetch is bound by the token's quota: a
+repository the size of `home-assistant/core` (about 100 000 requests for two years of history) is
+about seven hours on the enterprise quota. The forum is bound by the category size:
+
+| Category of community.home-assistant.io, 2026-11-04 | Topics | At 3 a second |
+|---|---|---|
+| `android-companion` | 1 853 | 10 min |
+| `ios` | 2 217 | 12 min |
+| `configuration` | 122 243 | 11 h |
+
+`solvedOnly` makes the site list only topics with an accepted answer (about one in five in
+`configuration`, so neither a listing page nor a topic request for the rest) and `closedWithinDays`
+ends the listing at the first page outside the window; with both, the `configuration` category is
+an hour or two. Docs are a few minutes of embedding for the whole home-assistant.io tree (about
+1 600 pages, 12 MB of markdown). Embedding runs at about 24 chunks a second on a GitHub runner.
+
+**The first fill converges over runs.** The build stops 20 minutes before the job timeout
+(`timeout-minutes`, default 350) and the raw store is published even then, so each run keeps its
+fetched payloads and, through the vector checkpoint, its embedded vectors; the next run resumes
+instead of starting over. The android fill on a 1000 per hour token converges in two to three
+nightly runs, core in about two on the enterprise quota. A manual `workflow_dispatch` between
+nights speeds it up, or tighten the schedule for the fill; runs of one slug queue behind each
+other. After that the nightly job is incremental and its cost follows the number of changed items,
+not the size of the repository. A release that changes the embedding model, the chunk schema or
+anything else in the config hash makes the next build start over, with the raw store and the
+checkpoint to resume from.
+
+**Measured on android.** On 2026-10-19, for the android config (every issue since 2019, every
+closed pull request, three discussion categories, stable releases, two docs sites, the Kotlin
+sources, two string files, the agent skills and the whole Android forum category), on an Apple M4
+Pro with Node 26, a 1 Gbit/s connection and the vectors of a previous issues-and-docs index to
+reuse, starting from a raw store that already held every issue and 2084 of the pull requests:
+
+| Stage | Items | Wall time |
+|---|---|---|
+| GitHub sources (issues, pull requests, discussions, releases, docs, code, files) | 7367 | 24.6 min |
+| Forum (Discourse, 4 requests per second, the default then) | 1847 | 9.7 min |
+| Whole build, embedding included | 9214 items, 41440 chunks (18685 embedded, 22755 reused) | 34.3 min |
+
+The resulting index is 91 MB and the raw store 43 MB (7974 records). On 2026-10-20 with the same
+setup, a full raw store and the previous index to reuse:
+
+| Build | What it read | Wall time |
+|---|---|---|
+| Full rebuild (`--full`, or every 7 days) | every listing, every checkout; 24 chunks embedded, 41 433 reused | 3 min 16 s |
+| Incremental (the nightly default) | issues, pull requests, discussions, releases and forum topics changed since the previous build (none that morning), the checkouts in full; 0 chunks embedded, 6376 reused | 17 s |
+
+### Raw store
+
+With `--raw`, every fetched payload is kept verbatim (gzip JSON per item) in a second SQLite file
+next to the index, gitignored like the index. It serves three purposes:
+
+- A rebuild with the same store skips the comment, review and topic requests of items whose change
+  marker (`updated_at`, `last_posted_at`) did not move.
+- It holds the vector checkpoint of a full build: every batch of embedded chunks is written to its
+  `vectors` table (keyed by chunk hash under the model that produced it) as the build runs, and a
+  full build reads it for every chunk the previous index cannot supply. A finished build prunes the
+  table to the chunks its index holds; the vectors of another model are dropped with it. The table
+  is created on open, so an older store needs no migration.
+- The benchmark mines its ground truth (duplicate links, close reasons, `fixes #N`, docs links in
+  maintainer replies) from the original material rather than from cleaned chunks.
+
+With `--offline`, the build replays the raw store instead of the network: issues, pull requests,
+discussions, releases and forum topics come from the stored payloads, docs, code and files from the
+checkouts as usual, and no token is needed. It is always a full build; `--previous` still reuses
+the vectors of unchanged chunks. The benchmark's bake-off builds one index per candidate model this
+way. Two things do not replay: an accepted forum answer that the stored topic neither carries (a
+current discourse-solved sends it in the payload) nor has on its first page of posts, and the
+GraphQL links the case mining fetches (those are stored by `mine-cases --github`, see "Benchmark").
+On the android store, an offline rebuild with every vector reused takes 22 s.
+
+## Local use
+
+### Build and query an index
 
 The consumer config (here the android one) names the sources. Docs, code and files are read from
 local checkouts: `--self` is the consumer's own checkout, other repositories are passed with
@@ -158,104 +482,34 @@ local checkouts: `--self` is the consumer's own checkout, other repositories are
     npm run query -- --config ../../android/.github/knowledge-bot.yaml \
       --index ./knowledge-android.sqlite "widget stops updating after reboot"
 
-Add `--live-forum community.home-assistant.io/android-companion` to a query to fuse a live forum
-search into the ranking, for topics newer than the index.
+The first run downloads the embedding model into `.model-cache/`. Pass `--previous <older index>`
+to reuse the vectors of unchanged chunks, `--full` to force a full build, `--offline` to replay the
+raw store ("Raw store"). Add `--live-forum community.home-assistant.io/android-companion` to a
+query to fuse a live forum search into the ranking, for topics newer than the index. The index is
+a single SQLite file that `sqlite3` can open directly.
 
-The first run downloads the embedding model (about 35 MB) into `.model-cache/`.
-Pass `--previous <older index>` to reuse the vectors of unchanged chunks. The index is a single
-SQLite file (FTS5 plus sqlite-vec) that `sqlite3` can open directly.
+### Triage dry run
 
-### Sources
+From `bot-scripts/` with a built index; the agent step is replaced by a hand-written verdict:
 
-Under `providers.github.<owner/repo>`:
+    GH_TOKEN=$(gh auth token) npm run -s prepare-triage -- --config ../../android/.github/knowledge-bot.yaml \
+      --index knowledge-android.sqlite --index-status fresh --repo home-assistant/android --issue 7654 \
+      --out eval-out/triage/handoff.json
+    echo '{"items":[{"type":"post_triage_verdict","confidence":"80","duplicates":"4","related":"0,2","answer":"..."}]}' \
+      > eval-out/triage/agent_output.json
+    npm run -s render-verdict -- --config ../../android/.github/knowledge-bot.yaml --handoff eval-out/triage/handoff.json \
+      --agent-output eval-out/triage/agent_output.json --out-dir eval-out/triage --run-id local
+    cat eval-out/triage/comment.md
 
-- `issues`: open and closed issues with their comments; the author role of every chunk comes from the API association, never from the text.
-- `pulls`: closed pull requests, merged or not, with the review threads that have a maintainer reply (one chunk per comment with its own role), the issues they close (GitHub's closing references, read through GraphQL, plus closing keywords in the body) and the files touched; bot authors are skipped by default. Review chunks are indexed but never retrieved unless asked for (`--with-reviews` on the query CLI), since they talk about code rather than symptoms.
-- `discussions`: the discussions of the named categories with their accepted answer, read through GraphQL.
-- `releases`: published release notes chunked by section; prereleases are opt-in.
-- `docs`: a markdown tree with front matter, linked by slug or id when they stay on the docs site.
-- `code`: Kotlin sources as one chunk per top-level declaration, with the string resource keys it uses; maintainer audience.
-- `files`: Android string resources (`strings`) or markdown trees such as agent skills (`markdown`).
+### Feedback dry run
 
-Under `providers.discourse.<host>`: the topics of the named categories (slug or id), optionally filtered by tag, with the accepted answer; throttled to `requestsPerSecond`.
+From `bot-scripts/` with a raw store:
 
-### Build time
+    npm run -s collect-feedback -- --config ../../android/.github/knowledge-bot.yaml \
+      --raw knowledge-android.raw.sqlite --repo home-assistant/android --out eval-out/feedback
+    cat eval-out/feedback/digest.md   # only once a bot comment exists
 
-Measured on 2026-10-19 for the android config above (every issue since 2019, every closed pull
-request, three discussion categories, stable releases, two docs sites, the Kotlin sources, two
-string files, the agent skills and the whole Android forum category), on an Apple M4 Pro with
-Node 26, a 1 Gbit/s connection and the vectors of a previous issues-and-docs index to reuse:
-
-| Stage | Items | Wall time |
-|---|---|---|
-| GitHub sources (issues, pull requests, discussions, releases, docs, code, files) | 7367 | 24.6 min |
-| Forum (Discourse, 4 requests per second) | 1847 | 9.7 min |
-| Whole build, embedding included | 9214 items, 41440 chunks (18685 embedded, 22755 reused) | 34.3 min |
-
-The resulting index is 91 MB and the raw store 43 MB (7974 records). This 34 minute pass started
-from a raw store that already held every issue and 2084 of the pull requests, fetched by an earlier
-pass that ran for 65 minutes before GitHub's primary rate limit stopped it. A first fill from
-nothing therefore costs about 11 000 REST requests (one listing page per 100 items, one comments
-request per issue, one review-comments and one files request per pull request), which is more
-than the 5000 requests per hour of a user token: the client now waits out the window boundary,
-so expect about two hours for the very first android build. Every later build reuses the raw
-store (no comment, review or topic request for an unchanged item) and the previous vectors, and
-takes the time of the listings plus the changed items.
-
-Measured on 2026-10-20 with the same setup, a full raw store and the previous index to reuse:
-
-| Build | What it read | Wall time |
-|---|---|---|
-| Full rebuild (`--full`, or every 7 days) | every listing, every checkout; 24 chunks embedded, 41 433 reused | 3 min 16 s |
-| Incremental (the nightly default) | issues, pull requests, discussions, releases and forum topics changed since the previous build (none that morning), the checkouts in full; 0 chunks embedded, 6376 reused | 17 s |
-
-The Actions `GITHUB_TOKEN` has 1000 requests per hour on a personal repository and 15 000 on one
-that belongs to a GitHub Enterprise Cloud account. The client keeps up to four requests in flight
-(the comments of several issues, the reviews and files of several pull requests) and paces their
-starts to the quota GitHub announces in every response, so it follows whatever limit the token has
-without being configured: about four requests per second on the enterprise quota, and a wait for
-the next window instead of a refused request on a small one. The first fill of a large consumer
-therefore converges over a few runs (see "Run it in GitHub Actions"): each run keeps its fetched
-payloads and its embedded vectors in the raw store, so the next one resumes instead of starting
-over. Tighten the schedule for the fill if a day per run
-is too slow; runs of one slug queue behind each other. After that the nightly job is incremental
-and its cost follows the number of changed items, not the size of the repository.
-
-The forum and the docs scale differently from the GitHub sources. A `docs` provider reads a
-checkout, so it costs no API request: the whole home-assistant.io tree (about 1 600 pages, 12 MB
-of markdown) is a few minutes of embedding. A Discourse category costs one listing request per 30
-topics plus one request per kept topic, at `requestsPerSecond` (4 by default, 20 at most), so the
-size of the category decides. On 2026-11-04 `android-companion` had 1 853 topics (the 10 minutes
-above), `ios` 2 217 and `configuration` 122 243, which at the default rate is about nine hours,
-more than the GitHub fetch of a repository the size of core. `closedWithinDays` skips the topic
-request of anything without activity in the window (the listing still pages through the whole
-category, about 4 000 requests for `configuration`) and `solvedOnly` keeps only topics with an
-accepted answer. Fetched topics stay in the raw store across runs like every other item.
-
-### Raw store
-
-With `--raw`, every fetched payload is kept verbatim (gzip JSON per item) in a second SQLite file
-next to the index. It is gitignored like the index. It serves two purposes: the benchmark mines its
-ground truth (duplicate links, close reasons, `fixes #N`, docs links in maintainer replies) from the
-original material rather than from cleaned chunks, and a rebuild with the same store skips the
-comment, review and topic requests of items whose change marker (`updated_at`, `last_posted_at`)
-did not move.
-
-The raw store also holds the vector checkpoint of a full build: every batch of embedded chunks is
-written to its `vectors` table (keyed by chunk hash under the model that produced it) as the build
-runs, and a full build reads it for every chunk the previous index cannot supply. A build killed on
-the job budget, or ended by a provider that gave up, therefore keeps its embedding work along with
-its fetched payloads, and the next run only embeds what is new. A finished build prunes the table to
-the chunks its index holds; the vectors of another model are dropped with it. The table is created
-on open, so an older store needs no migration.
-
-With `--offline`, the build replays the raw store instead of the network: issues, pull requests,
-discussions, releases and forum topics come from the stored payloads, docs, code and files from the
-checkouts as usual, and no token is needed. It is always a full build; `--previous` still reuses
-the vectors of unchanged chunks. The benchmark's bake-off builds one index per candidate model this
-way. Two things do not replay: an accepted forum answer that the stored topic neither carries (a
-current discourse-solved sends it in the payload) nor has on its first page of posts, and the
-GraphQL links the case mining fetches (those are stored by `mine-cases --github`, see Benchmark). On the android store, an offline rebuild with every vector reused takes 22 s.
+Add `--github` with `GH_TOKEN` to refresh the reactions, as the nightly step does.
 
 ## Benchmark
 
@@ -379,249 +633,6 @@ with docs 30.4 against 21.7 and duplicate 58.2 against 52.7). The validation int
 zero, so by the rule above the default stays bge-small; arctic-embed-s is the candidate to re-run
 once the case set has grown, and the switch is one `embedding` block in the consumer config.
 
-## Run it in GitHub Actions
-
-A consumer holds its config at `.github/knowledge-bot.yaml` and two thin caller workflows. The
-reusable workflows check out this repository at the commit the caller references
-(`job.workflow_repository` at `job.workflow_sha`), so the actions and scripts always match the workflow version.
-
-Nightly rebuild, manual run, and a run on every push that touches the config:
-
-    name: Knowledge index
-
-    on: # yamllint disable-line rule:truthy
-      schedule:
-        - cron: "17 3 * * *"
-      workflow_dispatch:
-      push:
-        branches: [main]
-        paths:
-          - .github/knowledge-bot.yaml
-          - .github/workflows/knowledge-index.yml
-
-    permissions: {}
-
-    jobs:
-      build:
-        uses: TimoPtr/auto-triage/.github/workflows/build-index.yml@<sha> # vX.Y.Z
-        permissions:
-          contents: read
-          actions: read
-          issues: write
-        with:
-          slug: android
-          checkouts: |
-            home-assistant/companion.home-assistant
-            home-assistant/contributors.home-assistant.io
-
-Append on close, so a resolution is searchable shortly after the issue or pull request closes:
-
-    name: Knowledge index append
-
-    on: # yamllint disable-line rule:truthy
-      issues:
-        types: [closed]
-      pull_request_target:
-        types: [closed]
-
-    permissions: {}
-
-    jobs:
-      append:
-        uses: TimoPtr/auto-triage/.github/workflows/append-on-close.yml@<sha> # vX.Y.Z
-        permissions:
-          contents: read
-          actions: read
-        with:
-          slug: android
-          item: ${{ github.event_name == 'issues' && format('issue:{0}', github.event.issue.number) || format('pull:{0}', github.event.pull_request.number) }}
-
-Builds and appends of one slug share a concurrency group, so an append waits for a running build.
-GitHub keeps one pending run per group: closes that pile up during a long build show as cancelled
-and are covered by the next nightly rebuild. An append that changes nothing (a bot pull request
-that was never indexed) publishes nothing.
-
-`pull_request_target` is deliberate: a `pull_request` run from a fork writes the cache into the
-fork's scope, invisible to the nightly build. The called workflow never checks out pull request
-code; it reads the API with the workflow token only. `actions: read` is for the artifact fallback,
-`issues: write` for the tracking issue the build keeps open while the index is stale, unusable or
-missing (`tracking: false` turns it off).
-
-What the pieces do:
-
-- `actions/setup-bot` installs `bot-scripts` with Node 26 and caches the embedding model.
-- `actions/restore-index` restores the index and the raw store from the Actions cache by key prefix
-  (`<slug>-index-v<format>-`, `<slug>-raw-v<schema>-`), validates the index against the config,
-  and falls back to the newest `<slug>-index` artifact produced by a default-branch run. Outputs:
-  `found`, `usable`, `status` (`fresh` under two days, `stale`, `unusable` with a `reason` such as
-  another model, `missing`), `source` (`cache`, `artifact`, `none`), `age-days`, `items`, `chunks`.
-- `actions/publish-index` saves the index and raw store to the cache under a run-scoped key and
-  uploads them as artifacts with 30 day retention; it refuses an unusable index.
-- After a successful publish, `build-index.yml` runs the test split of the consumer's eval cases
-  (`evalCases` in the config) against the new index, writes the summary to the job summary and
-  uploads the run as the `eval-<slug>` artifact. A consumer without cases skips this with a line in
-  the log.
-- `actions/report-index-status` writes the job summary and maintains the tracking issue.
-- `build-index.yml` ties them together; `append-on-close.yml` upserts one item in place;
-  `selfcheck.yml` validates a config, for pull requests that touch it.
-
-How a build decides what to read: with a usable restored index, the build is incremental. It starts
-from a copy of that index and asks each source only for what changed since the index was started
-(one hour of overlap): issues through the API's `since`, pull requests, discussions, releases and
-forum categories listed newest first until the first older item. Docs, code and files are re-read
-from the checkouts every time, which takes seconds and is how a deleted page or file leaves the
-index. A listed item that no longer qualifies (an issue reopened when only closed ones are indexed,
-a forum topic that lost its tag) is removed. What the sources cannot report incrementally waits for
-the full rebuild: a deleted or transferred issue, a reopened pull request, a topic or discussion
-moved out of its category, a forum answer accepted without a new post. The full rebuild happens
-when the last one is 7 or more days old, when the config changed, when no usable index exists, or
-when the `full` input of `build-index.yml` is set (the android caller exposes it on
-`workflow_dispatch`). Releases are listed in commit order, so the incremental build reads the whole
-list and keeps those published since; that is a handful of requests.
-
-First fill of a large repository: the android fill is about 11 000 API requests and the workflow
-token allows 1000 per hour, so the first nightly runs stop on the rate limit before the index is
-written. Each run keeps its raw store (the build is stopped 20 minutes before the job timeout and
-the raw store is published even when the build failed), and the next run continues from it, so the
-fill converges in two to three runs. A manual `workflow_dispatch` run between nights speeds it up.
-The tracking issue reports `missing` until the first index is published.
-
-The pipeline self-test (`ci-pipeline.yml`) runs on every push to `main` and every pull request: it
-validates `examples/selfcheck/knowledge-bot.yaml`, builds an index of this repository's own issues
-and docs through the reusable workflow, restores it in a second job and runs one query.
-
-## Triage workflow
-
-`.github/workflows/triage.md` is a gh-aw workflow (Copilot engine) that comments on a new issue
-with the closest earlier reports, discussions and docs, and a short answer when it is confident. It
-is a reusable workflow: its compiled `triage.lock.yml` is committed here (the `lock` job of the
-test workflow recompiles it with the gh-aw version named in its first line and fails on a
-difference; regenerate with `gh aw compile triage`) and a consumer calls
-it from a thin workflow that owns the triggers:
-
-    name: Knowledge triage
-
-    on: # yamllint disable-line rule:truthy
-      issues:
-        types: [opened, labeled]
-      workflow_dispatch:
-        inputs:
-          issue-number:
-            description: Issue to triage
-            required: true
-            type: string
-
-    permissions: {}
-
-    jobs:
-      triage:
-        # An issue created with a label fires opened and labeled at once; only ai-recheck starts a run.
-        if: github.event_name != 'issues' || github.event.action != 'labeled' || github.event.label.name == 'ai-recheck'
-        concurrency:
-          group: knowledge-triage-${{ github.event.issue.number || inputs.issue-number }}
-          cancel-in-progress: false
-        uses: TimoPtr/auto-triage/.github/workflows/triage.lock.yml@<sha> # vX.Y.Z
-        permissions:
-          contents: read
-          actions: read
-          issues: write
-          pull-requests: read     # gh-aw's own conclusion jobs ask for it
-          copilot-requests: write
-        with:
-          issue-number: ${{ github.event.issue.number || inputs.issue-number }}
-          event-action: ${{ github.event.action || 'dispatch' }}
-          label: ${{ github.event.label.name || '' }}
-
-The called workflow checks this repository out at the commit the caller references
-(`job.workflow_repository` at `job.workflow_sha`), so the scripts match the workflow version; pin by SHA once `v1`
-exists. Three things about a called gh-aw workflow, learned on the first runs: its prompt must be
-embedded in the lock (`inlined-imports: true`), since gh-aw otherwise reads the markdown from the
-caller's workspace at run time; every permission a generated job asks for must be granted by the
-caller or GitHub refuses the call at start-up (hence no reaction on the issue, and
-`pull-requests: read` for gh-aw's conclusion jobs); and `GH_AW_AGENT_OUTPUT` is read from the step's
-shell, not through `env.` in the same step. The Copilot engine runs on the workflow token with `copilot-requests: write`; no secret is
-added. A `labeled` event runs only for `ai-recheck` (removed again so it can be re-applied), a
-manual run passes `dispatch`. An issue created with a label fires `opened` and `labeled` at once, so the
-caller's `if` skips every other label before the call: a run that this workflow refused would still be
-created by the caller's trigger and wait in its concurrency group. The pre-activation check stays as
-the second line of defence. Who may trigger a run is the caller's choice of events; the template sets
-`roles: all` because gh-aw otherwise activates only for actors with write access and an outsider's
-issue would stop after pre-activation. Issues from anyone are triaged, so the issue text is treated as
-data everywhere.
-
-What happens, in three jobs:
-
-1. **Pre-activation (no model).** Fetches the issue with `gh api` before anything is installed,
-   checks out the consumer and this repository, restores the index and runs `prepare-triage` from
-   the saved payload, so the step that loads the model and the rest of the dependencies holds no
-   token. The body is cleaned like an indexed issue, embedded, and searched (dense + lexical, with
-   fenced logs lifted into the lexical query + a live forum search on the cleaned text), excluding
-   the issue itself when the index already holds it. The gate stops the run for pull requests, bot authors,
-   empty issues, a missing or unusable index, and a best similarity under `triage.minSimilarity`.
-   Otherwise it writes the handoff (`schemas/handoff.json`: the cleaned issue, up to ten excerpts
-   with ids, source, url, date, audience, outcome and scores, and the confidence thresholds) and
-   uploads it as the `triage-handoff` artifact. A stopped run spends no agent time and posts nothing.
-2. **Agent.** `claude-sonnet-5` on the Copilot engine, five turns, no network, no GitHub tools,
-   `bash` limited to `cat`, `jq`, `head`, `wc` plus gh-aw's defaults (`ls`, `grep`, `sort`, `yq` and the like, and
-   its file `write` tool on any path of the sandbox). It reads `/tmp/gh-aw/agent/handoff.json` and calls
-   `post_triage_verdict` once with `confidence` (0 to 100), `duplicates` and `related` (excerpt ids),
-   an optional `answer` and `component`. It never sees the index; what it writes inside the sandbox reaches
-   nothing downstream, since the post job reads the handoff artifact uploaded before the agent ran. gh-aw's diagnostic
-   outputs (`report-missing-tool`, `report-missing-data`, `report-incomplete`), which would open issues with
-   the agent's own text, are disabled: the verdict is the only output. A failed run is reported by
-   gh-aw's conclusion job as an issue in the consumer repository (label `agentic-workflows`, one per
-   failure class and day, never auto-closed; the body is gh-aw's own diagnostics, sanitized). Since
-   anyone's issue reaches the model, the failure classes an issue author can provoke with the issue
-   text (the turn or time budget, a run without the verdict tool, a denied tool, the per-run credit cap)
-   are excluded and show only in the run summary; engine, billing and configuration failures still open
-   an issue. Decide who in the consumer watches that label.
-3. **post-triage-verdict (no model).** `render-verdict` validates the verdict against the handoff
-   (unknown ids are dropped with a note, an unparsable confidence fails the job), picks the tier
-   (`high` from `triage.confidence.answer`, default 75; `medium` from `triage.confidence.links`,
-   default 45; `low` below) and renders the comment: a marker
-   `<!-- knowledge-bot v<release> run=<id> tier=<tier> issue=<n> -->`, "Possibly related to earlier
-   reports", "Discussions and docs", the answer on the high tier, and a feedback footer. Links come
-   only from the handoff; titles are escaped and mentions removed; developer-audience excerpts
-   appear only when the issue talks about building, maintainer-audience ones never (`component`
-   goes to the run summary). A low tier posts nothing. The job minimizes earlier bot comments as
-   outdated and posts the new one with `gh api` under its own `issues: write`; the `duplicate`
-   label is never applied.
-
-The pre-activation job writes the gate outcome to the job summary and the post-triage-verdict job
-the tier, the verdict and the comment (or why none was posted), so a run that posts nothing is still
-readable. One case is only in gh-aw's own agent summary: an agent that ends without calling the
-tool, since gh-aw skips the custom job then.
-
-The pre-activation job holds `issues: write` to remove the `ai-recheck` label; that is the one write
-scope outside the posting job, and no dependency code runs with its token (the index restore uses it
-for the read-only artifact fallback).
-
-Staged rollout: with `triage.staged: true` in the config the comment goes to the run summary only.
-Read the summaries for a while, then flip it.
-
-    triage:
-      staged: true
-      minSimilarity: 0.35
-      confidence:
-        answer: 75
-        links: 45
-
-Local dry run, from `bot-scripts/` with a built index (the agent step is replaced by a hand-written
-verdict):
-
-    GH_TOKEN=$(gh auth token) npm run -s prepare-triage -- --config ../../android/.github/knowledge-bot.yaml \
-      --index knowledge-android.sqlite --index-status fresh --repo home-assistant/android --issue 7654 \
-      --out eval-out/triage/handoff.json
-    echo '{"items":[{"type":"post_triage_verdict","confidence":"80","duplicates":"4","related":"0,2","answer":"..."}]}' \
-      > eval-out/triage/agent_output.json
-    npm run -s render-verdict -- --config ../../android/.github/knowledge-bot.yaml --handoff eval-out/triage/handoff.json \
-      --agent-output eval-out/triage/agent_output.json --out-dir eval-out/triage --run-id local
-    cat eval-out/triage/comment.md
-
-Cost: one model run per triaged issue, bounded by five turns and fifteen minutes; the gate keeps
-pull requests, bot issues and low-similarity issues from reaching the model. The `template` job of
-the test workflow compiles the template with the pinned gh-aw version on every change.
-
 ## Quality loop
 
 The nightly build closes the loop on the triage comments; a consumer that calls `build-index.yml`
@@ -652,9 +663,9 @@ reply text never reaches it. `tracking: false` on the caller turns the issue off
 **Suppression.** Issues whose bot comment was downvoted or dismissed are the suppression list. The
 triage template restores the newest `feedback.json` from the cache in pre-activation (a missing,
 unreadable or older file is ignored with a log line). When a retrieved excerpt is one of those
-issues, of the same repository, at or above `triage.suppressSimilarity` (default 0.8, a tuning
-item), the handoff marks a demotion and `render-verdict` lowers the tier by one: high becomes
-medium, medium becomes low. The run summary names the suppressed issue.
+issues, of the same repository, at or above `triage.suppressSimilarity`, the handoff marks a
+demotion and `render-verdict` lowers the tier by one: high becomes medium, medium becomes low. The
+run summary names the suppressed issue.
 
 **Eval regression.** When the build evaluated the test split, it restores the previous nightly
 `eval-<slug>` artifact (directory mode of `restore-artifact.sh`: default-branch runs only, plain
@@ -664,10 +675,53 @@ with the interval excluding zero) opens or comments the tracking issue `Knowledg
 regression`; a clean comparison closes it. A build without a previous artifact or without eval
 cases says so and stays green.
 
-Local dry run of the collection, from `bot-scripts/` with a raw store:
+## Contributing
 
-    npm run -s collect-feedback -- --config ../../android/.github/knowledge-bot.yaml \
-      --raw knowledge-android.raw.sqlite --repo home-assistant/android --out eval-out/feedback
-    cat eval-out/feedback/digest.md   # only once a bot comment exists
+### Layout
 
-Add `--github` with `GH_TOKEN` to refresh the reactions, as the nightly step does.
+- `bot-scripts/` TypeScript run natively by Node 26 (type stripping, no build step): providers,
+  index writer, retrieval, CLIs. `npm ci --ignore-scripts --omit=dev` installs the runtime;
+  `tsc --noEmit` is a dev-only check. Imports keep the `.ts` extension, and no syntax that needs
+  transformation (enums, parameter properties, decorators) is used.
+- `bot-scripts/src/triage/` the deterministic halves of the triage workflow: the gate and handoff
+  builder, the verdict parser and the comment renderer.
+- `bot-scripts/src/feedback/` the quality loop: reactions, replies and outcomes of the bot
+  comments, the suppression list and the digest.
+- `actions/` the composite actions the reusable workflows are made of.
+- `.github/workflows/` the reusable workflows consumers call: `build-index.yml`,
+  `append-on-close.yml`, `selfcheck.yml`, and the gh-aw workflow `triage.md` with its compiled
+  `triage.lock.yml`; plus `test.yml` and the pipeline self-test `ci-pipeline.yml`.
+- `schemas/` JSON Schema for the config, the eval cases, the handoff and the index metadata.
+- `benchmarks/` the kept outputs of the benchmark runs, one dated directory each.
+- `examples/selfcheck/` the config the pipeline self-test indexes this repository with.
+- `docs/superpowers/plans/` implementation plans, one per phase.
+
+### Development
+
+    cd bot-scripts
+    npm ci --ignore-scripts
+    npm test          # tsc --noEmit on src (strict) and tests, then node --test
+
+After a change to `triage.md`, recompile the lock with `gh aw compile triage`; the test workflow
+fails on a lock that does not match. Renovate (`renovate.json`, the android presets) keeps the npm
+packages and the action pins in the hand-written workflows and composite actions current;
+`triage.lock.yml` and `.github/aw/` are excluded because `gh aw compile` owns their pins. An update
+of the embedding stack carries a note in its pull request: check the eval on a rebuilt index first,
+and announce the rebuild in the release notes.
+
+### Releases
+
+Releases are semver tags on `main`. During `0.x` a change to the config schema, the handoff or the
+comment format bumps the minor version; anything else bumps the patch. Each bot comment starts
+with a hidden marker naming the release that produced it (`<!-- knowledge-bot vX.Y.Z ... -->`),
+read from `bot-scripts/package.json`, so the feedback digest can compare releases.
+
+To cut one: the tests and the lock check are green on `main`, bump `version` in
+`bot-scripts/package.json` in the last commit, then
+
+    git tag -a vX.Y.Z -m vX.Y.Z && git push origin vX.Y.Z   # tags are signed, so they must be annotated
+    gh release create vX.Y.Z --generate-notes
+
+Say in the notes when the release forces a full index rebuild: a new embedding model, a chunk
+schema change, or anything that enters the config hash makes the next nightly build start over
+("Sizing and limits"), and consumers with a large corpus should expect that run to take longer.
