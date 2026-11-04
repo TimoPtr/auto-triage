@@ -11,8 +11,9 @@ const DAY_MS = 24 * 60 * 60 * 1000;
 interface SiteCategory { id: number; slug: string }
 interface ListTopic { id: number; title: string; slug: string; posts_count: number; views: number; like_count: number; created_at: string; last_posted_at: string; closed: boolean; has_accepted_answer: boolean; tags: string[] }
 interface TopicList { topic_list: { more_topics_url?: string; topics: ListTopic[] } }
-interface Post { post_number: number; cooked: string; created_at: string; username: string }
-interface Topic { accepted_answer?: { post_number: number } | null; post_stream: { posts: Post[] } }
+interface Post { post_number: number; cooked: string; created_at: string; username: string; accepted_answer?: boolean }
+interface AcceptedAnswer { post_number: number; cooked?: string; created_at?: string }
+interface Topic { accepted_answer?: { post_number: number } | null; accepted_answers?: AcceptedAnswer[]; post_stream: { posts: Post[] } }
 
 async function resolveCategories(client: DiscourseClient, wanted: string[]): Promise<SiteCategory[]> {
   const site = await client.getJson<{ categories: SiteCategory[] }>('/site.json');
@@ -23,20 +24,26 @@ async function resolveCategories(client: DiscourseClient, wanted: string[]): Pro
   return wanted.map((w) => bySlug.get(w) ?? byId.get(w)!);
 }
 
+interface Listing { solvedOnly: boolean; since?: Date; stopAt?: Date }
+
 /**
  * Pages a category list (newest activity first) until the site stops offering
- * a next page or repeats one. With `since`, a page whose topics all had their
- * last post before it ends the listing; a pinned old topic at the top of a
- * page does not, since newer topics follow it.
+ * a next page or repeats one. With `solvedOnly` the site lists only topics with
+ * an accepted answer (the `solved` filter of discourse-solved; a site without
+ * the plugin ignores it and `keep` still filters). A page whose topics all had
+ * their last post before `stopAt` (the later of `since` and the window) ends the
+ * listing; a pinned old topic at the top of a page does not, since newer topics
+ * follow it.
  */
-async function* listTopics(client: DiscourseClient, category: SiteCategory, since?: Date): AsyncGenerator<ListTopic> {
+async function* listTopics(client: DiscourseClient, category: SiteCategory, { solvedOnly, since, stopAt }: Listing): AsyncGenerator<ListTopic> {
   let page = 0;
   let previousNext: string | undefined;
+  const filter = solvedOnly ? '&solved=yes' : '';
   for (;;) {
-    const list = await client.getJson<TopicList>(`/c/${category.slug}/${category.id}.json?page=${page}`);
+    const list = await client.getJson<TopicList>(`/c/${category.slug}/${category.id}.json?page=${page}${filter}`);
     const topics = list.topic_list.topics;
     yield* since ? topics.filter((t) => new Date(t.last_posted_at) >= since) : topics;
-    if (since && topics.every((t) => new Date(t.last_posted_at) < since)) return;
+    if (stopAt && topics.every((t) => new Date(t.last_posted_at) < stopAt)) return;
     const next = list.topic_list.more_topics_url;
     if (!next || next === previousNext) return;
     previousNext = next;
@@ -58,9 +65,20 @@ async function loadTopic(client: DiscourseClient, host: string, category: SiteCa
   return topic;
 }
 
+/**
+ * The accepted answer's post number: discourse-solved sends `accepted_answers`
+ * (with the post text) on a current site and `accepted_answer` on an older
+ * one; the flag on the post itself is the last resort.
+ */
+function acceptedPostNumber(topic: Topic): number | undefined {
+  return topic.accepted_answers?.[0]?.post_number ?? topic.accepted_answer?.post_number ?? topic.post_stream.posts.find((p) => p.accepted_answer)?.post_number;
+}
+
 async function answerText(client: DiscourseClient, topic: Topic, id: number): Promise<{ text: string; createdAt: string } | null> {
-  const number = topic.accepted_answer?.post_number;
+  const number = acceptedPostNumber(topic);
   if (!number) return null;
+  const carried = topic.accepted_answers?.find((a) => a.post_number === number);
+  if (carried?.cooked && carried.created_at) return { text: htmlToText(carried.cooked), createdAt: carried.created_at };
   // the topic payload carries the first page of posts; a later answer is fetched by its number
   const post = topic.post_stream.posts.find((p) => p.post_number === number)
     ?? await client.getJson<Post>(`/posts/by_number/${id}/${number}.json`).catch(() => null);
@@ -88,9 +106,11 @@ export interface ReadTopicsInput { client: DiscourseClient; host: string; option
 /** Reads the topics of the configured categories as forum items with their accepted answer. */
 export async function* readTopics({ client, host, options, now = new Date(), raw, since }: ReadTopicsInput): AsyncGenerator<ProviderItem> {
   const cutoff = options.closedWithinDays === undefined ? null : new Date(now.getTime() - options.closedWithinDays * DAY_MS);
+  const bounds = [since, cutoff].filter((d): d is Date => d !== null && d !== undefined);
+  const stopAt = bounds.length ? new Date(Math.max(...bounds.map((d) => d.getTime()))) : undefined;
   const seen = new Set<number>();
   for (const category of await resolveCategories(client, options.categories)) {
-    for await (const listed of listTopics(client, category, since)) {
+    for await (const listed of listTopics(client, category, { solvedOnly: options.solvedOnly, since, stopAt })) {
       if (seen.has(listed.id)) continue;
       seen.add(listed.id);
       if (!keep(listed, options, cutoff)) {
