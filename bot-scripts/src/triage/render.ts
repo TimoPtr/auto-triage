@@ -22,6 +22,8 @@ export function parseMarker(body: string): { version: string; runId: string; tie
 }
 
 const MARKDOWN_SPECIALS = /[\\`*_[\]()<>!|~]/g;
+/** What makes a line a heading, a list item, a rule or a setext underline when it opens the line. */
+const LINE_OPENERS = /^([-+#=]|\d+[.)])/;
 
 /** Index text shown inline: no html, no markdown syntax, no mentions, one line. */
 export function escapeInline(text: string): string {
@@ -43,7 +45,8 @@ export function safeUrl(url: string): string | null {
 
 /**
  * Model text as plain prose: html removed, links reduced to their label, url-like
- * tokens dropped, mentions broken, markdown escaped, issue references kept out of
+ * tokens dropped, mentions broken, markdown escaped (including what would open a
+ * heading, a list or a rule at the start of a line), issue references kept out of
  * GitHub's autolinking by a code span.
  */
 export function sanitizeAnswer(text: string): string {
@@ -54,9 +57,14 @@ export function sanitizeAnswer(text: string): string {
     .replace(/@(?=\w)/g, '')
     .replace(MARKDOWN_SPECIALS, (c) => `\\${c}`)
     .replace(/#(\d+)/g, '`#$1`')
-    .split('\n').map((line) => line.replace(/[ \t]{2,}/g, ' ').trim()).join('\n')
+    .split('\n').map((line) => escapeLineOpener(line.replace(/[ \t]{2,}/g, ' ').trim())).join('\n')
     .replace(/\n{3,}/g, '\n\n')
     .trim();
+}
+
+/** Escapes the last character of a line opener, so `# x`, `- x`, `1. x` and `---` stay prose. */
+function escapeLineOpener(line: string): string {
+  return line.replace(LINE_OPENERS, (opener) => `${opener.slice(0, -1)}\\${opener.slice(-1)}`);
 }
 
 function monthYear(date: string): string | null {
