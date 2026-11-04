@@ -221,6 +221,17 @@ over. Tighten the schedule for the fill if a day per run
 is too slow; runs of one slug queue behind each other. After that the nightly job is incremental
 and its cost follows the number of changed items, not the size of the repository.
 
+The forum and the docs scale differently from the GitHub sources. A `docs` provider reads a
+checkout, so it costs no API request: the whole home-assistant.io tree (about 1 600 pages, 12 MB
+of markdown) is a few minutes of embedding. A Discourse category costs one listing request per 30
+topics plus one request per kept topic, at `requestsPerSecond` (4 by default, 20 at most), so the
+size of the category decides. On 2026-11-04 `android-companion` had 1 853 topics (the 10 minutes
+above), `ios` 2 217 and `configuration` 122 243, which at the default rate is about nine hours,
+more than the GitHub fetch of a repository the size of core. `closedWithinDays` skips the topic
+request of anything without activity in the window (the listing still pages through the whole
+category, about 4 000 requests for `configuration`) and `solvedOnly` keeps only topics with an
+accepted answer. Fetched topics stay in the raw store across runs like every other item.
+
 ### Raw store
 
 With `--raw`, every fetched payload is kept verbatim (gzip JSON per item) in a second SQLite file
