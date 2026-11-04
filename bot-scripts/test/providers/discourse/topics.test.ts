@@ -178,3 +178,25 @@ test('the client waits out a 429 on the rate-limit schedule or the Retry-After h
   await assert.rejects(c.getJson('/y.json'), /Discourse 429 for https:\/\/community.example\/y.json/);
   assert.deepEqual(sleeps.filter((ms) => ms >= 1000), [5000, 15000, 30000, 60000]);
 });
+
+test('the answer comes from the accepted_answers array a current site sends, without a fetch', async () => {
+  const raw = openRawStore(join(tmp, 'raw-array.sqlite'));
+  const { accepted_answer: _old, ...rest } = fixture('topic-100.json');
+  const topic = { ...rest, accepted_answers: [{ post_number: 7, cooked: '<p>Answer from the array</p>', created_at: '2026-03-04T00:00:00Z' }] };
+  raw.put({ provider: 'discourse', origin: 'community.example', kind: 'topic', id: '100', updatedAt: '2026-03-05T00:00:00Z', payload: { listed: routes['/c/android-companion/42.json?page=0'].topic_list.topics[0], topic } });
+  const log = [];
+  const items = await collect(base, log, raw);
+  assert.deepEqual(items[0].chunks.map((c) => [c.kind, c.text]), [['body', 'Widget not updating\n\nMy widget stops & never refreshes.\n\nAndroid 15.'], ['answer', 'Answer from the array']]);
+  assert.equal(items[0].chunks[1].createdAt, '2026-03-04T00:00:00Z');
+  assert.ok(!log.some((k) => k === '/t/100.json' || k.startsWith('/posts/')), 'the stored topic carried the answer');
+  raw.close();
+});
+
+test('the flag on a post is the last resort for the accepted answer', async () => {
+  const raw = openRawStore(join(tmp, 'raw-flag.sqlite'));
+  const { accepted_answer: _old, ...topic } = fixture('topic-100.json');
+  raw.put({ provider: 'discourse', origin: 'community.example', kind: 'topic', id: '100', updatedAt: '2026-03-05T00:00:00Z', payload: { listed: routes['/c/android-companion/42.json?page=0'].topic_list.topics[0], topic } });
+  const items = await collect(base, [], raw);
+  assert.equal(items[0].chunks[1]?.kind, 'answer');
+  raw.close();
+});

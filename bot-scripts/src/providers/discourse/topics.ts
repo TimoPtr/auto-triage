@@ -11,8 +11,9 @@ const DAY_MS = 24 * 60 * 60 * 1000;
 interface SiteCategory { id: number; slug: string }
 interface ListTopic { id: number; title: string; slug: string; posts_count: number; views: number; like_count: number; created_at: string; last_posted_at: string; closed: boolean; has_accepted_answer: boolean; tags: string[] }
 interface TopicList { topic_list: { more_topics_url?: string; topics: ListTopic[] } }
-interface Post { post_number: number; cooked: string; created_at: string; username: string }
-interface Topic { accepted_answer?: { post_number: number } | null; post_stream: { posts: Post[] } }
+interface Post { post_number: number; cooked: string; created_at: string; username: string; accepted_answer?: boolean }
+interface AcceptedAnswer { post_number: number; cooked?: string; created_at?: string }
+interface Topic { accepted_answer?: { post_number: number } | null; accepted_answers?: AcceptedAnswer[]; post_stream: { posts: Post[] } }
 
 async function resolveCategories(client: DiscourseClient, wanted: string[]): Promise<SiteCategory[]> {
   const site = await client.getJson<{ categories: SiteCategory[] }>('/site.json');
@@ -64,9 +65,20 @@ async function loadTopic(client: DiscourseClient, host: string, category: SiteCa
   return topic;
 }
 
+/**
+ * The accepted answer's post number: discourse-solved sends `accepted_answers`
+ * (with the post text) on a current site and `accepted_answer` on an older
+ * one; the flag on the post itself is the last resort.
+ */
+function acceptedPostNumber(topic: Topic): number | undefined {
+  return topic.accepted_answers?.[0]?.post_number ?? topic.accepted_answer?.post_number ?? topic.post_stream.posts.find((p) => p.accepted_answer)?.post_number;
+}
+
 async function answerText(client: DiscourseClient, topic: Topic, id: number): Promise<{ text: string; createdAt: string } | null> {
-  const number = topic.accepted_answer?.post_number;
+  const number = acceptedPostNumber(topic);
   if (!number) return null;
+  const carried = topic.accepted_answers?.find((a) => a.post_number === number);
+  if (carried?.cooked && carried.created_at) return { text: htmlToText(carried.cooked), createdAt: carried.created_at };
   // the topic payload carries the first page of posts; a later answer is fetched by its number
   const post = topic.post_stream.posts.find((p) => p.post_number === number)
     ?? await client.getJson<Post>(`/posts/by_number/${id}/${number}.json`).catch(() => null);
