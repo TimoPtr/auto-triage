@@ -33,6 +33,12 @@ test('rejects a missing embedding section', () => {
   assert.throws(() => validateConfig(config), (e) => e instanceof ConfigError && /embedding/.test(e.message));
 });
 
+test('rejects an embedding revision that is not a commit', () => {
+  const config = loadConfig(fixture);
+  config.embedding.revision = 'main';
+  assert.throws(() => validateConfig(config), (e) => e instanceof ConfigError && /revision/.test(e.message));
+});
+
 test('rejects a repository key that is not owner/name', () => {
   const config = loadConfig(fixture);
   config.providers.github['not a repo'] = { issues: {} as never };

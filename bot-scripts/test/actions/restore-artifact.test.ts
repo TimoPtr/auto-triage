@@ -20,11 +20,20 @@ function zipDir(name: string, fill: (dir: string) => void): string {
   return zip;
 }
 
-function run(args: string[], zip: string, id = '42') {
+function run(args: string[], zip: string, id = '42', extraEnv: Record<string, string> = {}) {
   return spawnSync('bash', [script, ...args], {
-    env: { ...process.env, PATH: `${fakeBin}:${process.env.PATH}`, GITHUB_REPOSITORY: 'o/r', GH_TOKEN: 'x', FAKE_ARTIFACT_ID: id, FAKE_ZIP: zip }, encoding: 'utf8',
+    env: { ...process.env, PATH: `${fakeBin}:${process.env.PATH}`, GITHUB_REPOSITORY: 'o/r', GH_TOKEN: 'x', FAKE_ARTIFACT_ID: id, FAKE_ZIP: zip, ...extraEnv }, encoding: 'utf8',
   });
 }
+
+test('reads past a first page filled with artifacts of pull request runs', () => {
+  const zip = zipDir('paged', (d) => writeFileSync(join(d, 'knowledge.sqlite'), 'db'));
+  const r = run(['x-index', join(tmp, 'paged-dest', 'knowledge.sqlite')], zip, '42', { FAKE_PAGED: '1' });
+  assert.equal(r.status, 0, r.stderr);
+  assert.equal(r.stdout.trim(), '42');
+  const none = run(['x-index', join(tmp, 'paged-none-dest', 'knowledge.sqlite')], zip, '', { FAKE_PAGED: '1' });
+  assert.equal(none.stdout.trim(), '0');
+});
 
 test('restores a directory artifact of regular files', () => {
   const zip = zipDir('flat', (d) => { writeFileSync(join(d, 'summary.json'), '{}'); writeFileSync(join(d, 'cases.jsonl'), '{"id":"a"}\n'); });

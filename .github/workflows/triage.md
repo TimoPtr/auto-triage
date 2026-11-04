@@ -170,6 +170,20 @@ safe-outputs:
   report-missing-tool: false
   report-missing-data: false
   report-incomplete: false
+  # Failed runs are reported as issues in the consumer (label agentic-workflows, deduplicated per class
+  # for a day, never auto-closed). Issues from anyone reach the model, so the classes an issue author
+  # can provoke with its text (the turn or time budget, a run that ends without the verdict tool, a
+  # denied tool, the per-run credit cap) are excluded; engine, billing and configuration failures stay.
+  report-failure-as-issue:
+    - "!timed_out"
+    - "!missing_safe_outputs"
+    - "!missing_terminal_safe_output"
+    - "!report_incomplete"
+    - "!missing_tool"
+    - "!missing_data"
+    - "!tool_denials_exceeded"
+    - "!max_ai_credits_exceeded"
+    - "!ai_credits_rate_limit_error"
   jobs:
     post-triage-verdict:
       description: Records your triage verdict for the issue. Call it exactly once, then stop.

@@ -40,7 +40,7 @@ Everything below is already in place for `home-assistant/android` and can be cop
 
        embedding:
          model: Xenova/bge-small-en-v1.5
-         revision: ea104dacec62c0de699686887e3f920caeb4f3e3
+         revision: ea104dacec62c0de699686887e3f920caeb4f3e3   # a commit of the model repository
          dtype: q8
          dimensions: 384
          pooling: cls
@@ -541,7 +541,13 @@ What happens, in three jobs:
    an optional `answer` and `component`. It never sees the index; what it writes inside the sandbox reaches
    nothing downstream, since the post job reads the handoff artifact uploaded before the agent ran. gh-aw's diagnostic
    outputs (`report-missing-tool`, `report-missing-data`, `report-incomplete`), which would open issues with
-   the agent's own text, are disabled: the verdict is the only output.
+   the agent's own text, are disabled: the verdict is the only output. A failed run is reported by
+   gh-aw's conclusion job as an issue in the consumer repository (label `agentic-workflows`, one per
+   failure class and day, never auto-closed; the body is gh-aw's own diagnostics, sanitized). Since
+   anyone's issue reaches the model, the failure classes an issue author can provoke with the issue
+   text (the turn or time budget, a run without the verdict tool, a denied tool, the per-run credit cap)
+   are excluded and show only in the run summary; engine, billing and configuration failures still open
+   an issue. Decide who in the consumer watches that label.
 3. **post-triage-verdict (no model).** `render-verdict` validates the verdict against the handoff
    (unknown ids are dropped with a note, an unparsable confidence fails the job), picks the tier
    (`high` from `triage.confidence.answer`, default 75; `medium` from `triage.confidence.links`,

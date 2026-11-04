@@ -2,6 +2,7 @@
 # Fake gh for the restore-artifact.sh tests: answers the three api calls the script makes and,
 # like the real gh, rejects flags it does not know (jq's --arg is not a gh flag).
 # FAKE_ARTIFACT_ID: the id the artifact listing holds (empty for none); FAKE_ZIP: the zip served for the download.
+# FAKE_PAGED: the first page holds 100 artifacts of another repository and the usable one is on page 2.
 set -euo pipefail
 [ "${1:-}" = "api" ] || { echo "fake gh: unsupported command $*" >&2; exit 1; }
 path="$2"
@@ -15,7 +16,13 @@ done
 case "$path" in
   */actions/artifacts/*/zip) cat "$FAKE_ZIP" ;;
   */actions/artifacts\?*)
-    if [ -n "${FAKE_ARTIFACT_ID:-}" ]; then
+    page="$(sed -n 's/.*[?&]page=\([0-9]*\).*/\1/p' <<< "$path")"
+    if [ -n "${FAKE_PAGED:-}" ] && [ "${page:-1}" = "1" ]; then
+      rejected="$(for i in $(seq 1 100); do printf '{"id":%s,"expired":false,"created_at":"2026-10-21T00:00:00Z","workflow_run":{"head_repository_id":2,"repository_id":1,"head_branch":"main"}},' "$((100 + i))"; done)"
+      printf '{"artifacts":[%s]}\n' "${rejected%,}"
+    elif [ -n "${FAKE_PAGED:-}" ] && [ "$page" != "2" ]; then
+      echo '{"artifacts":[]}'
+    elif [ -n "${FAKE_ARTIFACT_ID:-}" ]; then
       printf '{"artifacts":[{"id":%s,"expired":false,"created_at":"2026-10-20T00:00:00Z","workflow_run":{"head_repository_id":1,"repository_id":1,"head_branch":"main"}},{"id":7,"expired":false,"created_at":"2026-10-21T00:00:00Z","workflow_run":{"head_repository_id":2,"repository_id":1,"head_branch":"main"}}]}\n' "$FAKE_ARTIFACT_ID"
     else
       echo '{"artifacts":[]}'
