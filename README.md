@@ -210,10 +210,14 @@ Measured on 2026-10-20 with the same setup, a full raw store and the previous in
 | Incremental (the nightly default) | issues, pull requests, discussions, releases and forum topics changed since the previous build (none that morning), the checkouts in full; 0 chunks embedded, 6376 reused | 17 s |
 
 The Actions `GITHUB_TOKEN` has 1000 requests per hour on a personal repository and 15 000 on one
-that belongs to a GitHub Enterprise Cloud account; the client itself makes about two requests per
-second. The first fill of a large consumer therefore converges over a few runs (see "Run it in
-GitHub Actions"): each run keeps its fetched payloads and its embedded vectors in the raw store, so
-the next one resumes instead of starting over. Tighten the schedule for the fill if a day per run
+that belongs to a GitHub Enterprise Cloud account. The client keeps up to four requests in flight
+(the comments of several issues, the reviews and files of several pull requests) and paces their
+starts to the quota GitHub announces in every response, so it follows whatever limit the token has
+without being configured: about four requests per second on the enterprise quota, and a wait for
+the next window instead of a refused request on a small one. The first fill of a large consumer
+therefore converges over a few runs (see "Run it in GitHub Actions"): each run keeps its fetched
+payloads and its embedded vectors in the raw store, so the next one resumes instead of starting
+over. Tighten the schedule for the fill if a day per run
 is too slow; runs of one slug queue behind each other. After that the nightly job is incremental
 and its cost follows the number of changed items, not the size of the repository.
 

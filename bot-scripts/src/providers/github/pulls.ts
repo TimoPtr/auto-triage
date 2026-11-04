@@ -3,6 +3,7 @@ import { packText } from '../../text/chunk.ts';
 import type { PullsConfig } from '../../config/types.ts';
 import type { AuthorRole, IndexChunk, IndexItem, PaginatingClient, ProviderItem } from '../types.ts';
 import type { RawStore } from '../../store/raw.ts';
+import { DETAIL_CONCURRENCY, mapInOrder } from '../pool.ts';
 import { CLOSING_BATCH, fetchClosingIssues } from './closing-issues.ts';
 
 const MAINTAINER_ASSOCIATIONS = new Set(['OWNER', 'MEMBER', 'COLLABORATOR']);
@@ -129,10 +130,10 @@ async function pullDetails(client: PaginatingClient, repo: string, pull: ApiPull
   return { ...details, closingIssues: closingIssues ?? null };
 }
 
-/** The items of a batch of pull requests, their closing references read in one request. */
+/** The items of a batch of pull requests, their closing references read in one request and their details several at a time. */
 async function* readBatch(client: PaginatingClient, repo: string, pulls: ApiPull[], options: PullsConfig, raw: RawStore | undefined, log: (line: string) => void): AsyncGenerator<ProviderItem> {
   const closing = await fetchClosingIssues(client, repo, pulls.filter((p) => needsClosingIssues(raw, repo, p)).map((p) => p.number), log);
-  for (const pull of pulls) yield pullItem(pull, await pullDetails(client, repo, pull, options.reviews, raw, closing), repo);
+  yield* mapInOrder(pulls, DETAIL_CONCURRENCY, async (pull) => pullItem(pull, await pullDetails(client, repo, pull, options.reviews, raw, closing), repo));
 }
 
 /** The index item of one pull request with its review threads and files. */
