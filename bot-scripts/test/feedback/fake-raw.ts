@@ -10,6 +10,9 @@ export function fakeRaw(records: RawRecord[] = []): RawStore {
     put(record: RawRecord) { map.set(keyOf(record), record); },
     *each<T>(provider: string, origin: string, kind: string) { for (const r of map.values()) if (r.provider === provider && r.origin === origin && r.kind === kind) yield r as RawRecord<T>; },
     count() { return map.size; },
+    vector() { return null; },
+    putVectors() {},
+    pruneVectors() { return 0; },
     close() {},
   };
 }

@@ -140,3 +140,16 @@ test('a listed topic that stopped qualifying is a removal', async () => {
   assert.deepEqual(items.filter((i) => i.remove).map((i) => i.sourceId), ['101']);
   assert.deepEqual(items.find((i) => i.remove), { remove: true, provider: 'discourse', origin: 'community.example', source: 'forum', sourceId: '101' });
 });
+
+test('the client retries a request that throws and gives up after the backoff steps', async () => {
+  let failures = 1;
+  const flaky = async () => { if (failures-- > 0) throw new Error('read ECONNRESET'); return Response.json({ ok: true }); };
+  const lines = [];
+  const sleeps = [];
+  const c = createDiscourseClient({ host: 'community.example', fetchImpl: flaky, sleepImpl: async (ms) => { sleeps.push(ms); }, requestsPerSecond: 50, log: (l) => lines.push(l) });
+  assert.deepEqual(await c.getJson('/x.json'), { ok: true });
+  assert.ok(lines.some((l) => /request failed \(read ECONNRESET\).*retry 1/.test(l)), lines.join('\n'));
+  assert.ok(sleeps.includes(1000));
+  const dead = createDiscourseClient({ host: 'community.example', fetchImpl: async () => { throw new Error('read ECONNRESET'); }, sleepImpl: async () => {}, requestsPerSecond: 50 });
+  await assert.rejects(dead.getJson('/y.json'), /request failed \(read ECONNRESET\) for https:\/\/community.example\/y.json/);
+});

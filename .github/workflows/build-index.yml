@@ -197,7 +197,7 @@ jobs:
           tracking: ${{ inputs.tracking }}
         env:
           GH_TOKEN: ${{ github.token }}
-      # A build that died on the rate limit keeps its raw store progress for the next run.
+      # A build that died on the rate limit or the budget keeps its raw store, fetched payloads and vector checkpoint, for the next run.
       - if: failure() && steps.build.outcome == 'failure'
         uses: ./.knowledge-bot/auto-triage/actions/publish-index
         with:

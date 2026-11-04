@@ -5,6 +5,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { writeIndex, chunkHash } from '../../src/store/writer.ts';
 import { openDatabase, readMeta } from '../../src/store/db.ts';
+import { openRawStore } from '../../src/store/raw.ts';
 import type { IndexChunk, IndexItem, Removal } from '../../src/providers/types.ts';
 
 const tmp = mkdtempSync(join(tmpdir(), 'kb-writer-'));
@@ -67,6 +68,55 @@ test('reuses vectors for unchanged chunks from the previous index', async () => 
   const stats = await writeIndex({ items: of(item('1', 'widget stops'), item('3', 'new text')), embedder: fakeEmbedder(undefined, calls), outPath: out, previousPath: previous, meta: {} });
   assert.deepEqual(stats, { items: 2, chunks: 2, embedded: 1, reused: 1 });
   assert.deepEqual(calls.flat(), ['new text']);
+});
+
+test('keeps embedded vectors in the checkpoint and resumes from it without a previous index', async () => {
+  const raw = openRawStore(join(tmp, 'checkpoint.raw.sqlite'));
+  const first = await writeIndex({ items: of(item('1', 'widget stops'), item('2', 'notification fails')), embedder: fakeEmbedder(), outPath: join(tmp, 'cp1.sqlite'), checkpoint: raw, meta: {} });
+  assert.deepEqual(first, { items: 2, chunks: 2, embedded: 2, reused: 0 });
+  assert.ok(raw.vector('fake@1@q8@cls', chunkHash({ kind: 'body', heading: undefined, text: 'widget stops', logs: null })));
+  // No previous index, as after a killed first build: the checkpoint supplies what was embedded; the rest is embedded and added.
+  const calls = [];
+  const lines = [];
+  const second = await writeIndex({ items: of(item('1', 'widget stops'), item('3', 'new text')), embedder: fakeEmbedder(undefined, calls), outPath: join(tmp, 'cp2.sqlite'), checkpoint: raw, meta: {}, log: (l) => lines.push(l) });
+  assert.deepEqual(second, { items: 2, chunks: 2, embedded: 1, reused: 1 });
+  assert.deepEqual(calls.flat(), ['new text']);
+  assert.ok(lines.some((l) => l.includes('1 from the checkpoint')));
+  // A finished build prunes what the index no longer holds: item 2 is gone, item 3 stays.
+  assert.equal(raw.vector('fake@1@q8@cls', chunkHash({ kind: 'body', heading: undefined, text: 'notification fails', logs: null })), null);
+  assert.ok(raw.vector('fake@1@q8@cls', chunkHash({ kind: 'body', heading: undefined, text: 'new text', logs: null })));
+  assert.ok(lines.some((l) => l === 'checkpoint: 1 stale vectors dropped'));
+  // The index and the checkpoint hold the same blob, so a checkpointed vector is what the index would have embedded.
+  const db = openDatabase(join(tmp, 'cp2.sqlite'), { readOnly: true });
+  const stored = db.prepare('SELECT v.embedding FROM chunks c JOIN vec_chunks v ON v.chunk_id = c.id WHERE c.text = ?').get('widget stops').embedding;
+  const checkpointed = raw.vector('fake@1@q8@cls', chunkHash({ kind: 'body', heading: undefined, text: 'widget stops', logs: null }));
+  assert.deepEqual(Array.from(stored as Uint8Array), Array.from(checkpointed ?? []));
+  assert.ok((checkpointed ?? []).length > 0);
+  db.close();
+  raw.close();
+});
+
+test('the checkpoint of another model is neither reused nor kept', async () => {
+  const raw = openRawStore(join(tmp, 'checkpoint-model.raw.sqlite'));
+  await writeIndex({ items: of(item('1', 'widget stops')), embedder: fakeEmbedder('other@1@q8@cls'), outPath: join(tmp, 'cpm1.sqlite'), checkpoint: raw, meta: {} });
+  const calls = [];
+  const stats = await writeIndex({ items: of(item('1', 'widget stops')), embedder: fakeEmbedder('fake@1@q8@cls', calls), outPath: join(tmp, 'cpm2.sqlite'), checkpoint: raw, meta: {} });
+  assert.deepEqual(stats, { items: 1, chunks: 1, embedded: 1, reused: 0 });
+  assert.equal(calls.flat().length, 1);
+  assert.equal(raw.vector('other@1@q8@cls', chunkHash({ kind: 'body', heading: undefined, text: 'widget stops', logs: null })), null);
+  raw.close();
+});
+
+test('a build that throws keeps its checkpointed vectors for the next run', async () => {
+  const raw = openRawStore(join(tmp, 'checkpoint-throw.raw.sqlite'));
+  async function* failing() { yield item('1', 'widget stops'); throw new Error('budget'); }
+  // One item is far below the batch size, so the vector is only checkpointed if the writer flushes before the failure propagates.
+  await assert.rejects(writeIndex({ items: failing(), embedder: fakeEmbedder(), outPath: join(tmp, 'cpt.sqlite'), checkpoint: raw, meta: {} }), /budget/);
+  const calls = [];
+  const stats = await writeIndex({ items: of(item('1', 'widget stops')), embedder: fakeEmbedder(undefined, calls), outPath: join(tmp, 'cpt2.sqlite'), checkpoint: raw, meta: {} });
+  assert.equal(stats.reused, 1);
+  assert.deepEqual(calls, []);
+  raw.close();
 });
 
 test('does not reuse vectors from another model', async () => {

@@ -58,7 +58,8 @@ const providers = values.offline && raw
 
 try {
   const plan = planBuild({ previousMeta: previousMeta(values.previous, config), configHash, now: new Date(), full: values.full, offline: values.offline });
-  const stats = await buildIndex({ config, configHash, outPath: values.out, previousPath: values.previous, embedder, providers, plan, log });
+  // The raw store doubles as the vector checkpoint: a build killed on the job budget keeps its embeddings there.
+  const stats = await buildIndex({ config, configHash, outPath: values.out, previousPath: values.previous, embedder, providers, plan, checkpoint: raw, log });
   if (raw) log(`raw store: ${raw.count()} records`);
   console.log(JSON.stringify(stats));
 } finally {

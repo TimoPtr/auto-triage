@@ -17,6 +17,14 @@ CREATE TABLE IF NOT EXISTS raw_items (
 );
 CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);
 INSERT OR IGNORE INTO meta (key, value) VALUES ('raw_schema_version', '${RAW_SCHEMA_VERSION}');
+-- Vectors of a build that did not finish, keyed by the chunk content hash. Added to existing stores
+-- on open (no schema version bump): a store without the table is still a valid store.
+CREATE TABLE IF NOT EXISTS vectors (
+  model_key TEXT NOT NULL,
+  hash      TEXT NOT NULL,
+  embedding BLOB NOT NULL,    -- the int8 blob the index stores
+  PRIMARY KEY (model_key, hash)
+);
 `;
 
 export interface RawRecord<T = unknown> {
@@ -29,10 +37,22 @@ export interface RawRecord<T = unknown> {
 }
 
 /**
+ * Vectors kept outside the index while a full build runs, so a build that dies
+ * on its time budget keeps its embedding work for the next run. Keyed by the
+ * chunk content hash under the model that produced them.
+ */
+export interface VectorCheckpoint {
+  vector(modelKey: string, hash: string): Uint8Array | null;
+  putVectors(modelKey: string, rows: { hash: string; embedding: Uint8Array }[]): void;
+  /** Drops every vector of another model and those of the given model whose hash is not kept. */
+  pruneVectors(modelKey: string, keep: Set<string>): number;
+}
+
+/**
  * Fetched source payloads, kept next to the index: the benchmark mines its
  * ground truth from them, and a rebuild skips the requests of unchanged items.
  */
-export interface RawStore {
+export interface RawStore extends VectorCheckpoint {
   get<T = unknown>(provider: string, origin: string, kind: string, id: string): RawRecord<T> | null;
   put(record: RawRecord): void;
   each<T = unknown>(provider: string, origin: string, kind: string): Iterable<RawRecord<T>>;
@@ -80,6 +100,9 @@ export function openRawStore(path: string, { recreateOnMismatch = false, log = (
     ON CONFLICT (provider, origin, kind, id) DO UPDATE SET updated_at = excluded.updated_at, fetched_at = excluded.fetched_at, payload = excluded.payload`);
   const list = db.prepare(`SELECT ${columns} FROM raw_items WHERE provider = ? AND origin = ? AND kind = ? ORDER BY id`);
   const total = db.prepare('SELECT count(*) AS n FROM raw_items');
+  const selectVector = db.prepare('SELECT embedding FROM vectors WHERE model_key = ? AND hash = ?');
+  const upsertVector = db.prepare('INSERT OR REPLACE INTO vectors (model_key, hash, embedding) VALUES (?, ?, ?)');
+  const deleteOtherModels = db.prepare('DELETE FROM vectors WHERE model_key <> ?');
   return {
     get<T>(provider: string, origin: string, kind: string, id: string) {
       const row = select.get(provider, origin, kind, id) as unknown as Row | undefined;
@@ -93,6 +116,37 @@ export function openRawStore(path: string, { recreateOnMismatch = false, log = (
     },
     count() {
       return Number((total.get() as { n: number }).n);
+    },
+    vector(modelKey, hash) {
+      const row = selectVector.get(modelKey, hash) as { embedding: Uint8Array } | undefined;
+      return row ? row.embedding : null;
+    },
+    putVectors(modelKey, rows) {
+      if (rows.length === 0) return;
+      db.exec('BEGIN');
+      try {
+        for (const row of rows) upsertVector.run(modelKey, row.hash, row.embedding);
+        db.exec('COMMIT');
+      } catch (error) {
+        db.exec('ROLLBACK');
+        throw error;
+      }
+    },
+    pruneVectors(modelKey, keep) {
+      db.exec('BEGIN');
+      try {
+        let removed = Number(deleteOtherModels.run(modelKey).changes);
+        db.exec('CREATE TEMP TABLE keep_hashes (hash TEXT PRIMARY KEY)');
+        const insertKeep = db.prepare('INSERT OR IGNORE INTO keep_hashes (hash) VALUES (?)');
+        for (const hash of keep) insertKeep.run(hash);
+        removed += Number(db.prepare('DELETE FROM vectors WHERE model_key = ? AND hash NOT IN (SELECT hash FROM keep_hashes)').run(modelKey).changes);
+        db.exec('DROP TABLE keep_hashes');
+        db.exec('COMMIT');
+        return removed;
+      } catch (error) {
+        db.exec('ROLLBACK');
+        throw error;
+      }
     },
     close() {
       db.close();
