@@ -65,7 +65,7 @@ test('applies defaults to the new github source kinds', () => {
 test('applies defaults to a discourse site and rejects an unknown key', () => {
   const config = loadConfig(fixture);
   const site = config.providers.discourse['community.home-assistant.io'];
-  assert.deepEqual(site, { categories: ['android-companion'], tags: ['android'], solvedOnly: false, acceptedAnswers: true, requestsPerSecond: 4 });
+  assert.deepEqual(site, { categories: ['android-companion'], tags: ['android'], solvedOnly: false, acceptedAnswers: true, requestsPerSecond: 3 });
   (site as unknown as Record<string, unknown>).scrapeEverything = true;
   assert.throws(() => validateConfig(config), (e) => e instanceof ConfigError && /discourse.*scrapeEverything/.test(e.message));
 });

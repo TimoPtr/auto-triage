@@ -16,6 +16,8 @@ const routes = {
   '/site.json': fixture('site.json'),
   '/c/android-companion/42.json?page=0': fixture('category-page-0.json'),
   '/c/android-companion/42.json?page=1': fixture('category-page-1.json'),
+  // the solved filter lists only topics with an accepted answer and ends after one page
+  '/c/android-companion/42.json?page=0&solved=yes': { topic_list: { topics: fixture('category-page-0.json').topic_list.topics.filter((t) => t.has_accepted_answer) } },
   '/t/100.json': fixture('topic-100.json'),
   '/t/101.json': fixture('topic-101.json'),
   '/t/102.json': fixture('topic-102.json'),
@@ -62,8 +64,18 @@ test('filters by tag and by window', async () => {
   assert.deepEqual((await collect({ ...base, closedWithinDays: 365 })).map((i) => i.sourceId), ['100', '101']);
 });
 
-test('solvedOnly keeps topics with an accepted answer', async () => {
-  assert.deepEqual((await collect({ ...base, solvedOnly: true })).map((i) => i.sourceId), ['100']);
+test('solvedOnly lists with the solved filter and requests no unsolved topic', async () => {
+  const log = [];
+  assert.deepEqual((await collect({ ...base, solvedOnly: true }, log)).map((i) => i.sourceId), ['100']);
+  assert.deepEqual(log.filter((k) => k.includes('page=')), ['/c/android-companion/42.json?page=0&solved=yes']);
+  assert.ok(!log.includes('/t/101.json'), 'the unsolved topic was never listed, so never fetched');
+});
+
+test('the window ends the listing at the first page entirely older than it', async () => {
+  const log = [];
+  assert.deepEqual(await collect({ ...base, closedWithinDays: 30 }, log), []);
+  assert.deepEqual(log.filter((k) => k.includes('page=')), ['/c/android-companion/42.json?page=0'], 'page 0 (March and February) is older than mid-September, so page 1 is not requested');
+  assert.ok(!log.some((k) => k.startsWith('/t/')), 'no topic request outside the window');
 });
 
 test('throttles requests through the sleep hook', async () => {
@@ -136,7 +148,7 @@ test('since stops at a page that is entirely older without requesting the next o
 });
 
 test('a listed topic that stopped qualifying is a removal', async () => {
-  const items = await collect({ ...base, solvedOnly: true }, [], undefined, new Date('2026-01-01T00:00:00Z'));
+  const items = await collect({ ...base, tags: ['android'] }, [], undefined, new Date('2026-01-01T00:00:00Z'));
   assert.deepEqual(items.filter((i) => i.remove).map((i) => i.sourceId), ['101']);
   assert.deepEqual(items.find((i) => i.remove), { remove: true, provider: 'discourse', origin: 'community.example', source: 'forum', sourceId: '101' });
 });
@@ -150,6 +162,19 @@ test('the client retries a request that throws and gives up after the backoff st
   assert.deepEqual(await c.getJson('/x.json'), { ok: true });
   assert.ok(lines.some((l) => /request failed \(read ECONNRESET\).*retry 1/.test(l)), lines.join('\n'));
   assert.ok(sleeps.includes(1000));
+  assert.ok(lines.some((l) => /after 1s$/.test(l)), lines.join('\n'));
   const dead = createDiscourseClient({ host: 'community.example', fetchImpl: async () => { throw new Error('read ECONNRESET'); }, sleepImpl: async () => {}, requestsPerSecond: 50 });
   await assert.rejects(dead.getJson('/y.json'), /request failed \(read ECONNRESET\) for https:\/\/community.example\/y.json/);
+});
+
+test('the client waits out a 429 on the rate-limit schedule or the Retry-After header, then gives up', async () => {
+  const sleeps = [];
+  let answers = [new Response('slow down', { status: 429, headers: { 'retry-after': '7' } }), new Response('slow down', { status: 429 }), Response.json({ ok: true })];
+  const c = createDiscourseClient({ host: 'community.example', fetchImpl: async () => answers.shift(), sleepImpl: async (ms) => { sleeps.push(ms); }, requestsPerSecond: 50 });
+  assert.deepEqual(await c.getJson('/x.json'), { ok: true });
+  assert.deepEqual(sleeps.filter((ms) => ms >= 1000), [7000, 5000], 'the header first, then the first schedule step');
+  answers = Array.from({ length: 5 }, () => new Response('slow down', { status: 429 }));
+  sleeps.length = 0;
+  await assert.rejects(c.getJson('/y.json'), /Discourse 429 for https:\/\/community.example\/y.json/);
+  assert.deepEqual(sleeps.filter((ms) => ms >= 1000), [5000, 15000, 30000, 60000]);
 });
