@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { createGitHubClient, MAX_RATE_LIMIT_WAIT_SECONDS, RATE_LIMIT_MARGIN_SECONDS } from '../../../src/providers/github/client.ts';
+import { createGitHubClient, paceInterval, MAX_IN_FLIGHT, MAX_RATE_LIMIT_WAIT_SECONDS, QUOTA_RESERVE, RATE_LIMIT_MARGIN_SECONDS, SECONDARY_LIMIT_PER_MINUTE } from '../../../src/providers/github/client.ts';
 
 /** @param {Record<string, { status?: number, headers?: Record<string,string>, body: unknown }>} routes */
 function fakeFetch(routes, log = []) {
@@ -149,7 +149,7 @@ test('logs the remaining rate limit at most once per minute', async () => {
   const lines: string[] = [];
   const reset = String(Math.floor(Date.now() / 1000) + 25 * 60);
   const fetchImpl = async () => new Response('{}', { status: 200, headers: { 'x-ratelimit-remaining': '412', 'x-ratelimit-reset': reset } });
-  const client = createGitHubClient({ token: 't', fetchImpl: fetchImpl as unknown as typeof fetch, log: (l) => lines.push(l), now: () => clock });
+  const client = createGitHubClient({ token: 't', fetchImpl: fetchImpl as unknown as typeof fetch, log: (l) => lines.push(l), now: () => clock, sleepImpl: async () => {} });
   await client.getJson('/repos/o/r');
   clock = 30_000; await client.getJson('/repos/o/r');
   assert.deepEqual(lines, []);
@@ -157,4 +157,68 @@ test('logs the remaining rate limit at most once per minute', async () => {
   assert.deepEqual(lines, ['GitHub API: 412 requests left, limit resets in 25 min']);
   clock = 90_000; await client.getJson('/repos/o/r');
   assert.equal(lines.length, 1);
+});
+
+test('paceInterval spreads the announced quota over the window and never beats the secondary limit', () => {
+  const minInterval = 60_000 / SECONDARY_LIMIT_PER_MINUTE;
+  assert.equal(paceInterval(null, 0), 0);
+  // 100 s left, 75 usable requests after the reserve: one every 1333 ms.
+  assert.equal(Math.round(paceInterval({ remaining: 75 + QUOTA_RESERVE, resetMs: 100_000 }, 0)), 1333);
+  // 14 000 an hour is one every 257 ms; more than the secondary limit allows is floored to it.
+  assert.equal(Math.round(paceInterval({ remaining: 14_000, resetMs: 3_600_000 }, 0)), 258);
+  assert.equal(paceInterval({ remaining: 60_000 + QUOTA_RESERVE, resetMs: 3_600_000 }, 0), minInterval);
+  // Nothing usable: wait for the window to end, plus the margin.
+  assert.equal(paceInterval({ remaining: QUOTA_RESERVE, resetMs: 100_000 }, 40_000), 60_000 + RATE_LIMIT_MARGIN_SECONDS * 1000);
+  // A window already over says nothing about the next one.
+  assert.equal(paceInterval({ remaining: 0, resetMs: 100_000 }, 100_000), minInterval);
+});
+
+test('paces request starts by the headers of the previous response', async () => {
+  let clock = 1_000_000;
+  const sleeps: number[] = [];
+  const resetMs = clock + 100_000;
+  // Each response announces 75 usable requests for the 100 s left: the next start is 1333 ms later.
+  const fetchImpl = async () => new Response('{}', { status: 200, headers: { 'x-ratelimit-remaining': String(75 + QUOTA_RESERVE), 'x-ratelimit-reset': String(resetMs / 1000) } });
+  const client = createGitHubClient({ token: 't', fetchImpl: fetchImpl as unknown as typeof fetch, now: () => clock, sleepImpl: async (ms) => { sleeps.push(ms); clock += ms; } });
+  await client.getJson('/a');
+  assert.deepEqual(sleeps, [], 'the first request knows no quota and starts at once');
+  await client.getJson('/b');
+  assert.equal(Math.round(sleeps[0]), 1333);
+  clock += 5_000; // time passes on its own: no sleep is needed for the next start
+  await client.getJson('/c');
+  assert.equal(sleeps.length, 1);
+});
+
+test('within one window the lowest remaining count seen wins', async () => {
+  let clock = 1_000_000;
+  const sleeps: number[] = [];
+  const resetMs = clock + 100_000;
+  const remaining = [String(1000), String(50 + QUOTA_RESERVE), String(900)];
+  const fetchImpl = async () => new Response('{}', { status: 200, headers: { 'x-ratelimit-remaining': remaining.shift() ?? '900', 'x-ratelimit-reset': String(resetMs / 1000) } });
+  const client = createGitHubClient({ token: 't', fetchImpl: fetchImpl as unknown as typeof fetch, now: () => clock, sleepImpl: async (ms) => { sleeps.push(ms); clock += ms; } });
+  await client.getJson('/a');
+  await client.getJson('/b'); // paced by 975 usable over 100 s: 103 ms
+  await client.getJson('/c'); // paced by 50 usable over the window: 2 s
+  await client.getJson('/d'); // the stale 900 does not raise the pace again
+  assert.equal(Math.round(sleeps[0]), 103);
+  assert.ok(Math.abs(sleeps[1] - (100_000 - sleeps[0]) / 50) < 1, String(sleeps[1]));
+  // The fake keeps announcing 50 usable requests, so the pace follows the shrinking window.
+  assert.ok(Math.abs(sleeps[2] - (100_000 - sleeps[0] - sleeps[1]) / 50) < 1, String(sleeps[2]));
+});
+
+test('keeps at most MAX_IN_FLIGHT requests in flight', async () => {
+  let inFlight = 0;
+  let peak = 0;
+  const pending: (() => void)[] = [];
+  const fetchImpl = () => {
+    inFlight += 1; peak = Math.max(peak, inFlight);
+    return new Promise<Response>((resolve) => pending.push(() => { inFlight -= 1; resolve(new Response('{}', { status: 200 })); }));
+  };
+  const client = createGitHubClient({ token: 't', fetchImpl: fetchImpl as unknown as typeof fetch, sleepImpl: async () => {} });
+  const all = Promise.all(Array.from({ length: 10 }, (_, i) => client.getJson(`/${i}`)));
+  await new Promise((r) => setImmediate(r));
+  assert.equal(peak, MAX_IN_FLIGHT);
+  while (pending.length) { pending.shift()!(); await new Promise((r) => setImmediate(r)); }
+  await all;
+  assert.equal(peak, MAX_IN_FLIGHT);
 });

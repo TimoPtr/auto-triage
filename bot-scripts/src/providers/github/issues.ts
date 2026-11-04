@@ -3,6 +3,7 @@ import { packText } from '../../text/chunk.ts';
 import type { IssuesConfig } from '../../config/types.ts';
 import type { AuthorRole, IndexChunk, IndexItem, PaginatingClient, ProviderItem } from '../types.ts';
 import type { RawStore } from '../../store/raw.ts';
+import { DETAIL_CONCURRENCY, mapInOrder } from '../pool.ts';
 
 const MAINTAINER_ASSOCIATIONS = new Set(['OWNER', 'MEMBER', 'COLLABORATOR']);
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -129,14 +130,17 @@ export interface ReadIssuesInput {
 export async function* readIssues({ client, repo, options, now = new Date(), raw, since }: ReadIssuesInput): AsyncGenerator<ProviderItem> {
   const cutoff = options.closedWithinDays === undefined ? null : new Date(now.getTime() - options.closedWithinDays * DAY_MS);
   const wanted = new Set(options.states);
-  for (const params of listings(wanted, cutoff, since)) for await (const element of client.paginate(`/repos/${repo}/issues`, params)) {
+  // The listing is read in order; the comments of several issues are fetched at once.
+  const resolve = async (element: unknown): Promise<ProviderItem | null> => {
     const issue = element as ApiIssue;
-    if (issue.pull_request) continue;
+    if (issue.pull_request) return null;
     if (!wanted.has(issue.state) || (cutoff && issue.state === 'closed' && issue.closed_at && new Date(issue.closed_at) < cutoff)) {
-      if (since) yield { remove: true, provider: 'github', origin: repo, source: 'issue', sourceId: String(issue.number) };
-      continue;
+      return since ? { remove: true, provider: 'github', origin: repo, source: 'issue', sourceId: String(issue.number) } : null;
     }
-    yield issueItem(issue, await issueComments(client, repo, issue, options.comments, raw), repo);
+    return issueItem(issue, await issueComments(client, repo, issue, options.comments, raw), repo);
+  };
+  for (const params of listings(wanted, cutoff, since)) {
+    for await (const item of mapInOrder(client.paginate(`/repos/${repo}/issues`, params), DETAIL_CONCURRENCY, resolve)) if (item) yield item;
   }
 }
 
