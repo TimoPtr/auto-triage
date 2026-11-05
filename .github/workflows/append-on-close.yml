@@ -16,6 +16,10 @@ on:  # yamllint disable-line rule:truthy
         description: issue:<n> or pull:<n>
         type: string
         required: true
+      retention-days:
+        description: Days the index and raw store artifacts are kept. Only the newest is ever restored; 7 covers the week after which an unused cache entry is evicted.
+        type: number
+        default: 7
 
 permissions: {}
 
@@ -79,3 +83,4 @@ jobs:
           slug: ${{ inputs.slug }}
           config: ${{ inputs.config }}
           index-path: ${{ steps.index.outputs.index-path }}
+          retention-days: ${{ inputs.retention-days }}

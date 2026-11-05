@@ -163,8 +163,8 @@ and docs through the reusable workflow, restores it in a second job and runs one
 `build-index.yml` builds or updates the index. Inputs: `slug` (prefix of the cache keys and
 artifact names), `config` (default `.github/knowledge-bot.yaml`), `checkouts` (the repositories
 read from a checkout, one `owner/repo` per line), `timeout-minutes` (default 350), `tracking`
-(default true) and `full`. Nightly rebuild, manual run, and a run on every push that touches the
-config:
+(default true), `full` and `retention-days` (default 7, see "Artifacts" under "Sizing and
+limits"). Nightly rebuild, manual run, and a run on every push that touches the config:
 
     name: Knowledge index
 
@@ -207,7 +207,7 @@ The pieces, in order:
 - The build itself, stopped 20 minutes before the job timeout so that its raw store is published
   even when it is killed.
 - `actions/publish-index` saves the index and raw store to the cache under a run-scoped key and
-  uploads them as artifacts with 30 day retention; it refuses an unusable index.
+  uploads them as artifacts kept for `retention-days`; it refuses an unusable index.
 - After a successful publish, the test split of the consumer's eval cases runs against the new
   index, with the summary in the job summary and the run uploaded as the `eval-<slug>` artifact;
   then the feedback collection of the "Quality loop".
@@ -230,7 +230,8 @@ android caller exposes it on `workflow_dispatch`).
 ### Append on close
 
 `append-on-close.yml` upserts one item in place, so a resolution is searchable shortly after the
-issue or pull request closes. Inputs: `slug`, `config` and `item` (`issue:<n>` or `pull:<n>`).
+issue or pull request closes. Inputs: `slug`, `config`, `item` (`issue:<n>` or `pull:<n>`) and
+`retention-days` (default 7, as for the build).
 
     name: Knowledge index append
 
@@ -460,6 +461,20 @@ way. Two things do not replay: an accepted forum answer that the stored topic ne
 current discourse-solved sends it in the payload) nor has on its first page of posts, and the
 GraphQL links the case mining fetches (those are stored by `mine-cases --github`, see "Benchmark").
 On the android store, an offline rebuild with every vector reused takes 22 s.
+
+### Artifacts
+
+Every build and append publishes the index and the raw store twice: to the Actions cache under a
+run-scoped key, which is what the next run restores, and as the `<slug>-index` and `<slug>-raw`
+artifacts, which are the fallback when the cache has nothing usable and the way to download a copy
+("Local use"). Only the newest copy of each is ever read, so the artifacts need no history. They
+are kept for `retention-days`, 7 by default: GitHub evicts a cache entry unused for 7 days, so an
+artifact that outlives the cache covers a schedule that stopped for up to a week, after which the
+next run is a first fill again. With a daily build that is about seven copies of each file at any
+time (a few hundred megabytes for android, several gigabytes for a repository the size of core).
+Cache entries are not deleted by the workflows; GitHub evicts them by age and, above 10 GB per
+repository, least recently used first. The `feedback-<slug>` and `eval-<slug>` artifacts are a few
+kilobytes and keep their 30 days.
 
 ## Local use
 

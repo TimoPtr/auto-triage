@@ -28,6 +28,10 @@ on:  # yamllint disable-line rule:truthy
         description: Force a full rebuild instead of an incremental build from the restored index.
         type: boolean
         default: false
+      retention-days:
+        description: Days the index and raw store artifacts are kept. Only the newest is ever restored; 7 covers the week after which an unused cache entry is evicted.
+        type: number
+        default: 7
 
 permissions: {}
 
@@ -117,6 +121,7 @@ jobs:
           config: ${{ inputs.config }}
           index-path: ${{ steps.previous.outputs.index-path }}
           raw-path: ${{ steps.previous.outputs.raw-path }}
+          retention-days: ${{ inputs.retention-days }}
       # Reactions, replies and outcomes of the bot comments, for the suppression list and the weekly tuning.
       - id: feedback
         if: success() && hashFiles(steps.previous.outputs.raw-path) != ''
@@ -205,6 +210,7 @@ jobs:
           config: ${{ inputs.config }}
           index-path: ${{ steps.previous.outputs.index-path }}
           raw-path: ${{ steps.previous.outputs.raw-path }}
+          retention-days: ${{ inputs.retention-days }}
           publish-index: 'false'
       - id: status
         if: always() && steps.previous.outcome == 'success'
