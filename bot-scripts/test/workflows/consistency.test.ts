@@ -26,3 +26,16 @@ test('the reusable workflows check this repository out through the job context',
     assert.match(text, /repository: \$\{\{ job\.workflow_repository \}\}\n\s+ref: \$\{\{ job\.workflow_sha \}\}/, rel);
   }
 });
+
+test('the reusable workflows expose the artifact retention and pass it to every publish', () => {
+  const action = read('../../../actions/publish-index/action.yml');
+  const actionDefault = /retention-days:\n\s+description: [^\n]*\n\s+default: '(\d+)'/.exec(action)?.[1];
+  for (const rel of ['../../../.github/workflows/build-index.yml', '../../../.github/workflows/append-on-close.yml']) {
+    const text = read(rel);
+    const inputDefault = /retention-days:\n\s+description: [^\n]*\n\s+type: number\n\s+default: (\d+)/.exec(text)?.[1];
+    assert.equal(inputDefault, actionDefault, `${rel} defaults to what the action defaults to`);
+    const publishes = text.match(/uses: \.\/\.knowledge-bot\/auto-triage\/actions\/publish-index\n(?:\s+[^\n]+\n)+?(?=\s*(?:-|#)|$)/g) ?? [];
+    assert.ok(publishes.length > 0, `${rel} publishes`);
+    for (const block of publishes) assert.match(block, /retention-days: \$\{\{ inputs\.retention-days \}\}/, `${rel}: ${block}`);
+  }
+});

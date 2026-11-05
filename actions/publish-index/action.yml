@@ -15,8 +15,8 @@ inputs:
     description: Raw store file to publish, when present.
     default: ''
   retention-days:
-    description: Artifact retention in days.
-    default: '30'
+    description: Days the artifacts are kept; the workflows pass their retention-days input.
+    default: '7'
   publish-index:
     description: Publish the index; false publishes only the raw store.
     default: 'true'
